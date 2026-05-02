@@ -9,7 +9,7 @@ globalThis.Buffer = globalThis.Buffer || Buffer;
 
 export const DEMO_MODE = false;
 
-const API_BASE = "";
+const API_BASE = "https://cloak-treasury.onrender.com";
 const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 const CLOAK_RELAY_URL = "https://api.cloak.ag";
 let browserCloakSdkPromise;
