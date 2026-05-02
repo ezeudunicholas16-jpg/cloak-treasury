@@ -388,10 +388,10 @@ textarea{resize:none;height:70px;line-height:1.6}
   </div>
 
   <div class="g4" style="margin-bottom:14px">
-    <div class="stat"><div class="stat-lbl">SHIELDED BALANCE</div><div class="stat-val gr">$2,400,000</div><div class="stat-note">USDC in pool</div></div>
-    <div class="stat"><div class="stat-lbl">TOTAL DISBURSED</div><div class="stat-val">$847,250</div><div class="stat-note">this quarter</div></div>
+    <div class="stat"><div class="stat-lbl">SHIELDED BALANCE</div><div class="stat-val gr" id="shielded-balance-stat">$0</div><div class="stat-note">executed in pool</div></div>
+    <div class="stat"><div class="stat-lbl">TOTAL DISBURSED</div><div class="stat-val" id="total-disbursed-stat">$0</div><div class="stat-note">executed disbursements</div></div>
     <div class="stat"><div class="stat-lbl">ACTIVE SCHEDULES</div><div class="stat-val am" id="active-sched-count">2</div><div class="stat-note">pending release</div></div>
-    <div class="stat"><div class="stat-lbl">VIEWING KEYS</div><div class="stat-val" id="vk-stat-count">4</div><div class="stat-note">1 expiring soon</div></div>
+    <div class="stat"><div class="stat-lbl">VIEWING KEYS</div><div class="stat-val" id="vk-stat-count">4</div><div class="stat-note" id="vk-expiring-note">0 expiring soon</div></div>
   </div>
 
   <div class="g2" style="margin-bottom:14px">
@@ -405,10 +405,8 @@ textarea{resize:none;height:70px;line-height:1.6}
       </div>
       <table class="tbl">
         <thead><tr><th>Label</th><th>Recipients</th><th>Amount</th><th>Status</th></tr></thead>
-        <tbody>
-          <tr><td class="primary mono">Q3 Payroll #2</td><td>8</td><td class="amount">$124,000 USDC</td><td><span class="badge active">ACTIVE</span></td></tr>
-            <tr><td class="primary mono">Demo Governance Batch</td><td>1</td><td class="amount">$42,500 USDC</td><td><span class="badge locked">LOCKED</span></td></tr>
-          <tr><td class="primary mono">Grant Batch #7</td><td>12</td><td class="amount">$200,000 USDC</td><td><span class="badge revealed">REVEALED</span></td></tr>
+        <tbody id="overview-disbursement-rows">
+          <tr><td colspan="4" style="text-align:center;color:var(--tx3);padding:18px">No disbursements yet</td></tr>
         </tbody>
       </table>
     </div>
@@ -420,7 +418,7 @@ textarea{resize:none;height:70px;line-height:1.6}
           <div><div class="card-label">Viewing key releases</div><div class="card-sub">Upcoming scheduled unlocks</div></div>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:7px">
+      <div style="display:flex;flex-direction:column;gap:7px" id="overview-vk-list">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:var(--s2);border-radius:var(--r);border:1px solid var(--b1)">
           <div><div class="fs12" style="color:var(--tx)">Q3 Payroll #2 — Finance</div><div class="fs10 mono tx3 mt8" style="margin-top:2px">Time-delay · 6d 14h remaining</div></div>
           <span class="badge locked">LOCKED</span>
@@ -989,8 +987,8 @@ let recipients  = [];
 let vkConfigs   = [];
 let viewingKeys = [];
 let disbursements = [
-  { id:1, label:'Q3 Payroll #2', token:'USDC', amount:124000, recips:8, status:'active', trigger:'time', delay:518400, created:Date.now()-3600000 },
-  { id:2, label:'Demo Governance Batch', token:'USDC', amount:42500, recips:1, status:'locked', trigger:'gov', releaseTrigger:'governance', delay:0, created:Date.now()-86400000, released:false, approvals:[], requiredApprovals:2, guardians:['G1','G2','G3'], governanceThreshold:'2/3 multisig approval', governanceMode:'multisig' },
+  { id:1, label:'Q3 Payroll #2', token:'USDC', amount:124000, recips:8, status:'active', trigger:'time', delay:518400, created:Date.now()-3600000, seededDemo:true },
+  { id:2, label:'Demo Governance Batch', token:'USDC', amount:42500, recips:1, status:'locked', trigger:'gov', releaseTrigger:'governance', delay:0, created:Date.now()-86400000, released:false, approvals:[], requiredApprovals:2, guardians:['G1','G2','G3'], governanceThreshold:'2/3 multisig approval', governanceMode:'multisig', seededDemo:true },
 ];
 const DEMO_AUDIT_KEY = 'nk:1qdem08f2a\u20269b7cQ3grantbatch7fullaudit';
 const DISBURSEMENTS_STORAGE_KEY = 'cloakTreasuryDisbursements';
@@ -1015,7 +1013,33 @@ function loadStoredDisbursements() {
     const stored = JSON.parse(localStorage.getItem(DISBURSEMENTS_STORAGE_KEY) || '[]');
     if (!Array.isArray(stored) || !stored.length) return;
     const existingIds = new Set(disbursements.map(d => d.id));
+    let repaired = false;
     stored.forEach(d => {
+      const now = Date.now();
+      d.createdAt = d.createdAt || d.created || now;
+      d.created = d.created || d.createdAt;
+      if (!d.executionTime && (d.executedAt || d.txSignature || d.status !== 'scheduled')) {
+        d.executionTime = d.executedAt || d.createdAt;
+      }
+      if (d.executionTime && Date.now() < d.executionTime) {
+        d.status = 'scheduled';
+        d.executed = false;
+        d.released = false;
+        d.pendingApproval = false;
+        d.awaitingExecution = true;
+        d.txSignature = null;
+        d.executedAt = null;
+        d.nk = '';
+        d.nkDisplay = '';
+        d.leafIndex = null;
+        d.commitment = 'pending';
+        d.transactions = createStoredTransactions(d.recipients || [], 'scheduled', d.executionTime, 'pending', d.token);
+        d.transactionSummary = summarizeTransactions(d.transactions);
+        d.releasedAt = null;
+        repaired = true;
+      } else if (d.executed === undefined) {
+        d.executed = !!(d.executedAt || d.txSignature || ['executed', 'awaiting_release', 'released', 'revealed', 'active', 'locked'].includes(d.status));
+      }
       d.scope = normalizeScopeLabel(d.scope || d.visibilityScope || 'Full audit trail');
       d.visibilityScope = d.scope;
       if ((!Array.isArray(d.transactions) || !d.transactions.length) && d.txSignature) {
@@ -1025,6 +1049,7 @@ function loadStoredDisbursements() {
       if (!existingIds.has(d.id)) disbursements.push(d);
     });
     nextId = Math.max(nextId, ...disbursements.map(d => d.id || 0)) + 1;
+    if (repaired) saveStoredDisbursements();
   } catch(err) {
     console.warn('Unable to load stored disbursements', err);
   }
@@ -1043,6 +1068,7 @@ function loadStoredViewingKeys() {
   try {
     const stored = JSON.parse(localStorage.getItem(VIEWING_KEYS_STORAGE_KEY) || '[]');
     viewingKeys = Array.isArray(stored) ? stored.map(normalizeViewingKeyRecord) : [];
+    saveStoredViewingKeys();
   } catch(err) {
     console.warn('Unable to load viewing keys', err);
     viewingKeys = [];
@@ -1410,6 +1436,8 @@ function resolveGovernanceConfig(threshold, source) {
 function normalizeViewingKeyRecord(vk) {
   const linkedDisbursementId = vk.disbursementId || vk.attachedDisbursementId;
   const d = disbursements.find(item => item.id === linkedDisbursementId);
+  const linkedExecuted = d ? isDisbursementExecuted(d) : true;
+  const isPrimaryDisbursementKey = String(vk.id) === 'disb-' + linkedDisbursementId || vk.recipient === 'Scheduled release';
   const triggerText = String(vk.trigger || '');
   const releaseTrigger = vk.releaseTrigger || (triggerText === 'Custom date/time' ? 'custom_time' : (triggerText === 'DAO approval' || vk.governanceType === 'dao' || vk.governanceMode === 'dao' ? 'dao' : (triggerText === 'Governance approval' || triggerText === 'gov' || triggerText === 'governance' ? 'governance' : vk.trigger)));
   const govConfig = releaseTrigger === 'governance' || releaseTrigger === 'dao'
@@ -1421,25 +1449,27 @@ function normalizeViewingKeyRecord(vk) {
     attachedDisbursementId: linkedDisbursementId,
     disbursementLabel: vk.disbursementLabel || (d ? d.label : ''),
     attachedDisbursementLabel: vk.attachedDisbursementLabel || vk.disbursementLabel || (d ? d.label : ''),
-    nk: vk.nk || vk.rawNk || vk.nkDisplay || '',
-    nkDisplay: vk.nkDisplay || vk.key || '',
+    nk: !linkedExecuted && isPrimaryDisbursementKey ? '' : (vk.nk || vk.rawNk || vk.nkDisplay || ''),
+    nkDisplay: !linkedExecuted && isPrimaryDisbursementKey ? '' : (vk.nkDisplay || vk.key || ''),
     pendingNk: vk.pendingNk || '',
     pendingNkDisplay: vk.pendingNkDisplay || '',
-    released: !!vk.released,
-    pendingApproval: !!vk.pendingApproval && !vk.released,
+    released: linkedExecuted && !!vk.released,
+    pendingApproval: linkedExecuted && !!vk.pendingApproval && !vk.released,
     unlockTime: vk.unlockTime || (d ? d.unlockTime : null),
     executionTime: vk.executionTime || (d ? d.executionTime : null),
     executedAt: vk.executedAt || (d ? d.executedAt : null),
-    awaitingExecution: !!vk.awaitingExecution || (d ? !isDisbursementExecuted(d) : false),
+    awaitingExecution: !linkedExecuted || !!vk.awaitingExecution,
     amount: vk.amount ?? (d ? d.amount : 0),
     recipients: vk.recipients ?? (d ? d.recips : 0),
-    txSignature: vk.txSignature || (d ? d.txSignature : ''),
+    txSignature: !linkedExecuted && isPrimaryDisbursementKey ? null : (vk.txSignature || (d ? d.txSignature : '')),
     createdAt: vk.createdAt || vk.created || Date.now(),
     recipient: vk.recipient || vk.requesterLabel || 'Auditor',
     requesterLabel: vk.requesterLabel || vk.recipient || 'Auditor',
     scope: normalizeScopeLabel(vk.scope || vk.visibilityScope || (d ? (d.scope || d.visibilityScope) : 'Full audit trail')),
     visibilityScope: normalizeScopeLabel(vk.scope || vk.visibilityScope || (d ? (d.scope || d.visibilityScope) : 'Full audit trail')),
-    transactions: Array.isArray(vk.transactions) ? vk.transactions : (d && Array.isArray(d.transactions) ? d.transactions : undefined),
+    transactions: !linkedExecuted && isPrimaryDisbursementKey
+      ? (d && Array.isArray(d.transactions) ? d.transactions : undefined)
+      : (Array.isArray(vk.transactions) ? vk.transactions : (d && Array.isArray(d.transactions) ? d.transactions : undefined)),
     transactionSummary: vk.transactionSummary || (d ? d.transactionSummary : undefined),
     trigger: vk.trigger || releaseTrigger || 'Time delay',
     releaseTrigger,
@@ -1466,6 +1496,7 @@ function upsertViewingKeyRecord(record) {
   saveStoredViewingKeys();
   renderStoredViewingKeys();
   renderGovernancePanel();
+  renderOverview();
   return normalized;
 }
 
@@ -1477,6 +1508,11 @@ function reconcileViewingKeyReleases() {
     const isApprovalKey = vk.releaseTrigger === 'governance' || vk.releaseTrigger === 'dao';
     const disbExecuted = d ? isDisbursementExecuted(d) : true;
     if (!disbExecuted) {
+      if (vk.released) {
+        vk.released = false;
+        vk.releasedAt = null;
+        changed = true;
+      }
       if (!vk.awaitingExecution) {
         vk.awaitingExecution = true;
         changed = true;
@@ -1503,13 +1539,13 @@ function reconcileViewingKeyReleases() {
     saveStoredViewingKeys();
     saveStoredDisbursements();
   }
+  return changed;
 }
 
 function getGovernanceViewingKeys() {
   return viewingKeys.filter(vk => {
     if (!(vk.releaseTrigger === 'governance' || vk.releaseTrigger === 'dao') || vk.rejected || vk.released) return false;
-    const d = disbursements.find(item => item.id === vk.disbursementId);
-    return !d || isDisbursementExecuted(d);
+    return true;
   });
 }
 
@@ -1552,7 +1588,11 @@ function renderGovernancePanel() {
   const approvals = selected.approvals || [];
   const actors = selected.releaseTrigger === 'dao' ? (selected.voters || selected.guardians || []) : (selected.guardians || []);
   const selectedType = String(selected.id) === 'disb-' + selected.disbursementId || selected.recipient === 'Scheduled release' ? 'Disbursement release' : 'Viewing key request';
-  if (summary) {
+  const selectedDisb = disbursements.find(item => item.id === selected.disbursementId);
+  const awaitingSelectedExecution = selectedDisb && !isDisbursementExecuted(selectedDisb);
+  if (summary && awaitingSelectedExecution) {
+    summary.textContent = selected.disbursementLabel + ' is awaiting scheduled execution.';
+  } else if (summary) {
     summary.textContent = selected.releaseTrigger === 'dao'
       ? selected.disbursementLabel + ' is awaiting DAO approval. ' + (selected.daoTotalMembers || actors.length) + ' members · ' + selected.requiredApprovals + ' approvals required.'
       : selectedType + ': ' + selected.disbursementLabel + ' is awaiting governance. ' + selected.requiredApprovals + ' of ' + actors.length + ' votes required.';
@@ -1562,8 +1602,8 @@ function renderGovernancePanel() {
     return '<div class="g-item ' + (approved ? 'approved' : '') + '"><div class="g-av">' + g + '</div><div class="g-name">' + g + '</div><div class="g-status">' + (approved ? 'Approved' : 'Pending') + '</div></div>';
   }).join('');
   const done = approvals.length >= selected.requiredApprovals || selected.released;
-  label.textContent = done ? 'Unlocked \u2713' : approvals.length + ' / ' + selected.requiredApprovals + ' needed';
-  bar.style.width = done ? '100%' : Math.min(100, approvals.length / selected.requiredApprovals * 100) + '%';
+  label.textContent = awaitingSelectedExecution ? 'Awaiting scheduled execution' : (done ? 'Unlocked \u2713' : approvals.length + ' / ' + selected.requiredApprovals + ' needed');
+  bar.style.width = awaitingSelectedExecution ? '0%' : (done ? '100%' : Math.min(100, approvals.length / selected.requiredApprovals * 100) + '%');
   bar.style.background = done ? 'var(--gr)' : 'var(--am)';
 }
 
@@ -1576,6 +1616,7 @@ function nav(page, el) {
   const target = document.querySelector('.nav-item[data-page="' + page + '"]');
   if (target) target.classList.add('active');
   else if (el) el.classList.add('active');
+  if (page === 'dashboard') renderOverview();
   if (page === 'disbursements') renderDisbCards();
   if (page === 'viewingkeys') {
     populateDisbursementDropdown();
@@ -1765,6 +1806,21 @@ function renderVKConfigs() {
 
 function rmVKConfig(i) { vkConfigs.splice(i, 1); renderVKConfigs(); }
 
+function parseUtcScheduleTimestamp(dateValue, timeValue) {
+  let datePart = String(dateValue || '').trim();
+  let timePart = String(timeValue || '').trim();
+  const slashDate = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashDate) {
+    datePart = slashDate[3] + '-' + slashDate[1].padStart(2, '0') + '-' + slashDate[2].padStart(2, '0');
+  }
+  const dashDate = datePart.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const cleanTime = timePart.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!dashDate || !cleanTime) return NaN;
+  datePart = dashDate[1] + '-' + dashDate[2].padStart(2, '0') + '-' + dashDate[3].padStart(2, '0');
+  timePart = cleanTime[1].padStart(2, '0') + ':' + cleanTime[2] + ':' + (cleanTime[3] || '00');
+  return Date.parse(datePart + 'T' + timePart + 'Z');
+}
+
 function getExecutionScheduleConfig() {
   const dateValue = ((document.getElementById('exec-date') || {}).value || '').trim();
   const timeValue = ((document.getElementById('exec-time') || {}).value || '').trim();
@@ -1774,7 +1830,7 @@ function getExecutionScheduleConfig() {
   if (!dateValue || !timeValue) {
     return { error: 'Choose both execution date and time.' };
   }
-  const executionTime = Date.parse(dateValue + 'T' + timeValue + ':00Z');
+  const executionTime = parseUtcScheduleTimestamp(dateValue, timeValue);
   if (!executionTime || Number.isNaN(executionTime)) {
     return { error: 'Choose a valid execution date and time.' };
   }
@@ -1799,9 +1855,12 @@ function getScheduleReleaseConfig(executionTime) {
 
 function isDisbursementExecuted(d) {
   if (!d) return false;
+  if (d.executed === false) return false;
+  if (d.executionTime && Date.now() < d.executionTime) return false;
   if (d.status === 'scheduled' || d.executing) return false;
+  if (d.executed === true) return true;
   if (d.executedAt || d.txSignature) return true;
-  return ['executed', 'awaiting_release', 'released', 'revealed', 'active', 'locked'].includes(d.status);
+  return !d.executionTime && ['active', 'locked'].includes(d.status);
 }
 
 function isDisbursementReleased(d) {
@@ -1810,7 +1869,8 @@ function isDisbursementReleased(d) {
   if (d.released) return true;
   if (d.releaseTrigger === 'immediate' || d.trigger === 'immediate') return true;
   if (d.trigger === 'time' || d.releaseTrigger === 'time' || d.releaseTrigger === 'custom_time') {
-    return Date.now() >= (d.unlockTime || (d.created + d.delay * 1000));
+    const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
+    return !!releaseAt && Date.now() >= releaseAt;
   }
   return d.status === 'revealed' || d.status === 'released';
 }
@@ -1824,7 +1884,7 @@ function registerReleasedViewingKey(d) {
   viewingKeys.forEach(vk => {
     const isScheduledDisbursementKey = String(vk.id) === 'disb-' + vk.disbursementId || vk.recipient === 'Scheduled release';
     const isApprovalKey = vk.releaseTrigger === 'governance' || vk.releaseTrigger === 'dao';
-    if (vk.disbursementId === d.id && !vk.released && (!isApprovalKey || isScheduledDisbursementKey)) {
+    if (vk.disbursementId === d.id && !vk.released && isScheduledDisbursementKey && (!isApprovalKey || isDisbursementReleased(d))) {
       vk.released = true;
       vk.releasedAt = d.releasedAt;
       changed = true;
@@ -1840,7 +1900,7 @@ function registerReleasedViewingKey(d) {
 
 function displayNkForDisbursement(d) {
   if (!d) return '';
-  if (!isDisbursementExecuted(d)) return '[awaiting scheduled execution]';
+  if (!isDisbursementExecuted(d)) return '[locked until execution]';
   if (!d.nkDisplay) return '';
   if (isDisbursementReleased(d)) {
     registerReleasedViewingKey(d);
@@ -1850,6 +1910,111 @@ function displayNkForDisbursement(d) {
   if (d.releaseTrigger === 'dao') return '[pending DAO approval]';
   if (d.releaseTrigger === 'custom_time') return '[locked until custom release time]';
   return '[locked until release]';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch]);
+}
+
+function isSeedDisbursement(d) {
+  return !!d && (d.seededDemo || (d.id === 1 && d.label === 'Q3 Payroll #2') || (d.id === 2 && d.label === 'Demo Governance Batch'));
+}
+
+function getRealDisbursements() {
+  return disbursements.filter(d => !isSeedDisbursement(d));
+}
+
+function getRealViewingKeys() {
+  return viewingKeys.filter(vk => {
+    const d = disbursements.find(item => item.id === vk.disbursementId);
+    return !d || !isSeedDisbursement(d);
+  });
+}
+
+function getDisbursementStatusInfo(d) {
+  if (!isDisbursementExecuted(d)) return { label: 'Scheduled', cls: 'pending' };
+  if (isDisbursementReleased(d)) return { label: 'Released', cls: 'revealed' };
+  if (d.releaseTrigger === 'dao' || d.governanceType === 'dao') return { label: 'Pending DAO', cls: 'pending' };
+  if (d.releaseTrigger === 'governance' || d.trigger === 'gov') return { label: 'Pending governance', cls: 'pending' };
+  if (d.status === 'locked') return { label: 'Locked', cls: 'locked' };
+  if (d.trigger === 'time' || d.releaseTrigger === 'time' || d.releaseTrigger === 'custom_time') return { label: 'Awaiting release', cls: 'locked' };
+  return { label: 'Executed', cls: 'active' };
+}
+
+function getViewingKeyStatusInfo(vk) {
+  const d = disbursements.find(item => item.id === vk.disbursementId);
+  if (d && !isDisbursementExecuted(d)) return { label: 'Scheduled', cls: 'pending', detail: 'Awaiting scheduled execution' };
+  if (vk.released) return { label: 'Released', cls: 'revealed', detail: vk.releasedAt ? 'Released ' + new Date(vk.releasedAt).toLocaleString() : 'Released' };
+  if (vk.releaseTrigger === 'dao') return { label: 'Pending DAO', cls: 'pending', detail: 'DAO approval pending' };
+  if (vk.releaseTrigger === 'governance') return { label: 'Pending governance', cls: 'pending', detail: 'Governance approval pending' };
+  if (vk.releaseTrigger === 'custom_time') return { label: 'Locked', cls: 'locked', detail: vk.unlockTime ? 'Custom release ' + new Date(vk.unlockTime).toLocaleString() : 'Custom release pending' };
+  if (vk.releaseTrigger === 'time' || vk.unlockTime) return { label: 'Locked', cls: 'locked', detail: vk.unlockTime ? 'Releases ' + new Date(vk.unlockTime).toLocaleString() : 'Time-delay pending' };
+  return { label: 'Locked', cls: 'locked', detail: 'Awaiting release' };
+}
+
+function getExpiryTime(vk) {
+  return vk.expiryTime || vk.expiresAt || vk.expirationTime || null;
+}
+
+function renderOverview() {
+  const realDisbs = getRealDisbursements()
+    .slice()
+    .sort((a, b) => (b.createdAt || b.created || 0) - (a.createdAt || a.created || 0));
+  const realKeys = getRealViewingKeys()
+    .slice()
+    .sort((a, b) => (b.createdAt || b.releasedAt || 0) - (a.createdAt || a.releasedAt || 0));
+  const executedDisbs = realDisbs.filter(isDisbursementExecuted);
+  const totalDisbursed = executedDisbs.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  const activeSchedules = realDisbs.filter(d => !isDisbursementReleased(d)).length;
+  const soonCutoff = Date.now() + 7 * 86400 * 1000;
+  const expiringSoon = realKeys.filter(vk => {
+    const expiry = getExpiryTime(vk);
+    return expiry && expiry > Date.now() && expiry <= soonCutoff;
+  }).length;
+
+  const totalEl = document.getElementById('total-disbursed-stat');
+  const shieldedEl = document.getElementById('shielded-balance-stat');
+  const activeEl = document.getElementById('active-sched-count');
+  const keyEl = document.getElementById('vk-stat-count');
+  const expiringEl = document.getElementById('vk-expiring-note');
+  if (totalEl) totalEl.textContent = '$' + Math.round(totalDisbursed).toLocaleString();
+  if (shieldedEl) shieldedEl.textContent = '$' + Math.round(totalDisbursed).toLocaleString();
+  if (activeEl) activeEl.textContent = activeSchedules;
+  if (keyEl) keyEl.textContent = realKeys.length;
+  if (expiringEl) expiringEl.textContent = expiringSoon + ' expiring soon';
+
+  const rowsEl = document.getElementById('overview-disbursement-rows');
+  if (rowsEl) {
+    rowsEl.innerHTML = realDisbs.length
+      ? realDisbs.slice(0, 5).map(d => {
+          const status = getDisbursementStatusInfo(d);
+          return '<tr>' +
+            '<td class="primary mono">' + escapeHtml(d.label || 'Untitled disbursement') + '</td>' +
+            '<td>' + (d.recips || d.recipients?.length || 0) + '</td>' +
+            '<td class="amount">$' + Number(d.amount || 0).toLocaleString() + ' ' + escapeHtml(d.token || activeToken) + '</td>' +
+            '<td><span class="badge ' + status.cls + '">' + status.label + '</span></td>' +
+          '</tr>';
+        }).join('')
+      : '<tr><td colspan="4" style="text-align:center;color:var(--tx3);padding:18px">No disbursements yet</td></tr>';
+  }
+
+  const vkListEl = document.getElementById('overview-vk-list');
+  if (vkListEl) {
+    vkListEl.innerHTML = realKeys.length
+      ? realKeys.slice(0, 5).map(vk => {
+          const d = disbursements.find(item => item.id === vk.disbursementId);
+          const status = getViewingKeyStatusInfo(vk);
+          const label = (d ? d.label : vk.disbursementLabel) || 'Viewing key';
+          const name = (vk.recipient || vk.requesterLabel || 'Auditor');
+          const trigger = vk.trigger || vk.releaseTrigger || 'release';
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:var(--s2);border-radius:var(--r);border:1px solid var(--b1)">' +
+            '<div><div class="fs12" style="color:var(--tx)">' + escapeHtml(label + ' - ' + name) + '</div>' +
+            '<div class="fs10 mono tx3" style="margin-top:2px">' + escapeHtml(normalizeScopeLabel(vk.scope || vk.visibilityScope)) + ' · ' + escapeHtml(trigger) + ' · ' + escapeHtml(status.detail) + '</div></div>' +
+            '<span class="badge ' + status.cls + '">' + status.label + '</span>' +
+          '</div>';
+        }).join('')
+      : '<div style="text-align:center;color:var(--tx3);padding:18px;background:var(--s2);border-radius:var(--r);border:1px solid var(--b1)">No viewing keys yet</div>';
+  }
 }
 
 function getLatestReleasedDisbursement() {
@@ -1897,7 +2062,7 @@ function renderStoredViewingKeys() {
   container.innerHTML = '';
   viewingKeys.forEach(vk => {
     const d = disbursements.find(item => item.id === vk.disbursementId);
-    const released = !!vk.released;
+    const released = !!vk.released && (!d || isDisbursementExecuted(d));
     const awaitingExecution = d ? !isDisbursementExecuted(d) : !!vk.awaitingExecution;
     const isGovernancePending = (vk.releaseTrigger === 'governance' || vk.releaseTrigger === 'dao') && !released;
     const badgeText = released ? 'ACTIVE' : (awaitingExecution ? 'SCHEDULED' : (isGovernancePending ? 'GOV. PENDING' : 'LOCKED'));
@@ -2047,13 +2212,15 @@ function resetScheduleForm(labelEl) {
 function updateDisbursementCounters() {
   const chipEl = document.getElementById('disb-chip');
   const countEl = document.getElementById('active-sched-count');
-  const activeCount = disbursements.filter(d => !isDisbursementReleased(d)).length;
+  const activeCount = getRealDisbursements().filter(d => !isDisbursementReleased(d)).length;
   if (chipEl) chipEl.textContent = activeCount;
-  if (countEl) countEl.textContent = disbursements.length;
+  if (countEl) countEl.textContent = activeCount;
+  renderOverview();
 }
 
 function createScheduledDisbursementRecord(label, total, executionConfig, releaseConfig, isDemoRun) {
   const draft = getScheduleDraft(label, total, executionConfig, releaseConfig || { delay: 0, unlockTime: null, releaseTrigger: selTrig, triggerLabel: selTrig }, isDemoRun);
+  const createdAt = Date.now();
   const transactionRows = createStoredTransactions(draft.recipientSnapshot, 'scheduled', draft.executionTime, 'pending', activeToken);
   const transactionSummary = summarizeTransactions(transactionRows);
   const newD = {
@@ -2071,11 +2238,13 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     trigger: selTrig,
     releaseTrigger: draft.releaseTrigger,
     delay: draft.delay,
-    created: Date.now(),
+    created: createdAt,
+    createdAt,
     executionTime: draft.executionTime,
+    executed: false,
     executedAt: null,
     unlockTime: draft.unlockTime,
-    txSignature: '',
+    txSignature: null,
     walletPublicKey: connectedWalletPublicKey || '',
     walletType: activeWalletType,
     walletNetwork: connectedWalletNetwork,
@@ -2113,7 +2282,7 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     recipients: newD.recips,
     transactions: newD.transactions,
     transactionSummary: newD.transactionSummary,
-    txSignature: '',
+    txSignature: null,
     walletPublicKey: newD.walletPublicKey,
     walletType: newD.walletType,
     walletNetwork: newD.walletNetwork,
@@ -2223,6 +2392,7 @@ function applyExecutedDisbursementResult(d, executionResult) {
   d.status = 'executed';
   d.executing = false;
   d.executionError = '';
+  d.executed = true;
   d.executedAt = executedAt;
   d.txSignature = result.signature;
   d.walletPublicKey = result.walletPublicKey || executionResult.depositorPublicKey || d.walletPublicKey || '';
@@ -2354,6 +2524,38 @@ async function processScheduledDisbursements() {
   }
 }
 
+function releaseDueDisbursementsAndKeys() {
+  let changed = false;
+  const now = Date.now();
+  disbursements.forEach(d => {
+    if (!isDisbursementExecuted(d) || d.released) return;
+    const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
+    const canRelease = d.releaseTrigger === 'immediate' || d.trigger === 'immediate' ||
+      ((d.trigger === 'time' || d.releaseTrigger === 'time' || d.releaseTrigger === 'custom_time') && releaseAt && now >= releaseAt);
+    if (canRelease) {
+      d.released = true;
+      d.releasedAt = now;
+      d.status = 'released';
+      registerReleasedViewingKey(d);
+      changed = true;
+    }
+  });
+  const keyChanged = reconcileViewingKeyReleases();
+  if (changed || keyChanged) {
+    saveStoredDisbursements();
+    saveStoredViewingKeys();
+    renderDisbCards();
+    renderStoredViewingKeys();
+    renderGovernancePanel();
+    renderOverview();
+  }
+}
+
+async function appSchedulerTick() {
+  await processScheduledDisbursements();
+  releaseDueDisbursementsAndKeys();
+}
+
 // ─── SUBMIT DISBURSEMENT ──────────────────────────────────────────────────────
 async function submitDisb() {
   const labelEl = document.getElementById('disb-label');
@@ -2478,7 +2680,9 @@ async function submitDisb() {
       releaseTrigger,
       delay,
       created: createdAt,
+      createdAt,
       executionTime: executionConfig.executionTime,
+      executed: true,
       executedAt,
       unlockTime: selTrig === 'time' ? scheduleRelease.unlockTime : null,
       txSignature: result.signature,
@@ -2584,7 +2788,7 @@ function renderDisbCards() {
   }
 
   disbursements.forEach(d => {
-    const releaseAt = d.unlockTime || (d.created + d.delay * 1000);
+    const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
     const remSec   = d.trigger === 'time' ? Math.max(0, Math.ceil((releaseAt - Date.now()) / 1000)) : null;
     const executed = isDisbursementExecuted(d);
     const execRemSec = !executed && d.executionTime ? Math.max(0, Math.ceil((d.executionTime - Date.now()) / 1000)) : null;
@@ -2657,7 +2861,7 @@ function startCountdowns() {
         execEl.textContent = fmtTime(rem);
         if (rem <= 0) {
           execEl.textContent = '00:00:00';
-          processScheduledDisbursements();
+          appSchedulerTick();
         }
       };
       tickExec();
@@ -2674,11 +2878,12 @@ function startCountdowns() {
     if (!cdEl) return;
 
     const tick = () => {
-      const releaseAt = d.unlockTime || (d.executionTime || d.created) + d.delay * 1000;
+      const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
+      if (!releaseAt) return;
       const rem = Math.max(0, Math.ceil((releaseAt - Date.now()) / 1000));
       cdEl.textContent = fmtTime(rem);
       if (rem <= 0) {
-        registerReleasedViewingKey(d);
+        releaseDueDisbursementsAndKeys();
         cdEl.textContent = '00:00:00';
         cdEl.style.color = 'var(--tx2)';
         const lbl = cdEl.nextElementSibling;
@@ -2694,7 +2899,8 @@ function startCountdowns() {
 
     tick();
     const iv = setInterval(() => {
-      const releaseAt = d.unlockTime || (d.executionTime || d.created) + d.delay * 1000;
+      const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
+      if (!releaseAt) { clearInterval(iv); return; }
       const rem = Math.ceil((releaseAt - Date.now()) / 1000);
       if (rem <= 0) { clearInterval(iv); }
       tick();
@@ -2793,8 +2999,7 @@ async function issueVK() {
   });
   saveStoredDisbursements();
 
-  const statEl = document.getElementById('vk-stat-count');
-  if (statEl) statEl.textContent = parseInt(statEl.textContent || '0') + 1;
+  renderOverview();
   if (recipEl) recipEl.value = '';
   toast(isGovernance || isDao ? 'Release request submitted' : 'Viewing key issued', recip + ' \u00b7 getNkFromUtxoPrivateKey() called');
 }
@@ -2990,7 +3195,7 @@ async function runDecrypt() {
   const keyEl = document.getElementById('audit-key');
   const key   = normalizeKey(keyEl ? keyEl.value : '');
   if (!key) { toast('No key', 'Paste a viewing key to decrypt.'); return; }
-  if (key.includes('[awaiting scheduled execution]')) {
+  if (key.includes('[awaiting scheduled execution]') || key.includes('[locked until execution]')) {
     toast('Disbursement not executed yet', 'Wait until the scheduled execution time has passed.');
     return;
   }
@@ -3101,8 +3306,9 @@ document.addEventListener('DOMContentLoaded', function() {
   populateDisbursementDropdown();
   renderStoredViewingKeys();
   renderGovernancePanel();
-  processScheduledDisbursements();
-  setInterval(processScheduledDisbursements, 1000);
+  renderOverview();
+  appSchedulerTick();
+  setInterval(appSchedulerTick, 1000);
   toggleDaoControls();
   addRecip();
   updateScore();
