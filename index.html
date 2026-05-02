@@ -574,15 +574,17 @@ textarea{resize:none;height:70px;line-height:1.6}
         </div>
         <div id="tc-time">
           <div class="frow"><label>Release after</label>
-            <select id="delay-sel" onchange="updateScore()">
+            <select id="delay-sel" onchange="toggleDaoControls()">
               <option value="30">30 seconds (demo)</option>
               <option value="3600">1 hour</option>
               <option value="86400">24 hours</option>
               <option value="604800">7 days</option>
               <option value="2592000">30 days</option>
               <option value="7776000">90 days</option>
+              <option value="custom">Custom date/time</option>
             </select>
           </div>
+          <div class="frow" id="custom-release-row" style="display:none"><label>Custom release date/time</label><input type="date" id="custom-release-date"><input type="time" id="custom-release-time"><div class="fs10 tx3 mono" style="padding-top:8px">Uses local time</div></div>
         </div>
         <div id="tc-block" style="display:none">
           <div class="frow"><label>Release at block height</label><input type="number" id="block-inp" placeholder="e.g. 300000000"></div>
@@ -699,7 +701,7 @@ textarea{resize:none;height:70px;line-height:1.6}
           <option>DAO approval</option>
         </select>
       </div>
-      <div class="frow" id="nvk-custom-time-row" style="display:none"><label>Release date/time</label><input type="date" id="nvk-release-date"><input type="time" id="nvk-release-time"><div class="fs10 tx3 mono" style="padding-top:8px">UTC</div></div>
+      <div class="frow" id="nvk-custom-time-row" style="display:none"><label>Release date/time</label><input type="date" id="nvk-release-date"><input type="time" id="nvk-release-time"><div class="fs10 tx3 mono" style="padding-top:8px">Uses local time</div></div>
       <div class="frow" id="nvk-gov-threshold-row" style="display:none"><label>Governance threshold</label>
         <select id="nvk-gov-thresh">
           <option>2/3 multisig approval</option>
@@ -1013,6 +1015,12 @@ function loadStoredDisbursements() {
     if (!Array.isArray(stored) || !stored.length) return;
     const existingIds = new Set(disbursements.map(d => d.id));
     stored.forEach(d => {
+      d.scope = normalizeScopeLabel(d.scope || d.visibilityScope || 'Full audit trail');
+      d.visibilityScope = d.scope;
+      if ((!Array.isArray(d.transactions) || !d.transactions.length) && d.txSignature) {
+        d.transactions = createStoredTransactions(d.recipients || [], d.txSignature, d.executedAt || d.created, d.commitment, d.token);
+        d.transactionSummary = summarizeTransactions(d.transactions);
+      }
       if (!existingIds.has(d.id)) disbursements.push(d);
     });
     nextId = Math.max(nextId, ...disbursements.map(d => d.id || 0)) + 1;
@@ -1425,7 +1433,10 @@ function normalizeViewingKeyRecord(vk) {
     createdAt: vk.createdAt || vk.created || Date.now(),
     recipient: vk.recipient || vk.requesterLabel || 'Auditor',
     requesterLabel: vk.requesterLabel || vk.recipient || 'Auditor',
-    scope: vk.scope || 'Full audit trail',
+    scope: normalizeScopeLabel(vk.scope || vk.visibilityScope || (d ? (d.scope || d.visibilityScope) : 'Full audit trail')),
+    visibilityScope: normalizeScopeLabel(vk.scope || vk.visibilityScope || (d ? (d.scope || d.visibilityScope) : 'Full audit trail')),
+    transactions: Array.isArray(vk.transactions) ? vk.transactions : (d && Array.isArray(d.transactions) ? d.transactions : undefined),
+    transactionSummary: vk.transactionSummary || (d ? d.transactionSummary : undefined),
     trigger: vk.trigger || releaseTrigger || 'Time delay',
     releaseTrigger,
     approvals: Array.isArray(vk.approvals) ? vk.approvals : [],
@@ -1579,8 +1590,11 @@ function toggleDaoControls() {
   const nvkDaoRow = document.getElementById('nvk-dao-members-row');
   const nvkGovRow = document.getElementById('nvk-gov-threshold-row');
   const nvkCustomTimeRow = document.getElementById('nvk-custom-time-row');
+  const delaySel = document.getElementById('delay-sel');
+  const customReleaseRow = document.getElementById('custom-release-row');
   const issueBtn = document.getElementById('issue-vk-btn');
   if (daoRow) daoRow.style.display = selTrig === 'gov' && govThresh && govThresh.value === 'DAO majority vote' ? '' : 'none';
+  if (customReleaseRow) customReleaseRow.style.display = selTrig === 'time' && delaySel && delaySel.value === 'custom' ? '' : 'none';
   if (nvkCustomTimeRow) nvkCustomTimeRow.style.display = nvkTrigger && nvkTrigger.value === 'Custom date/time' ? '' : 'none';
   if (nvkGovRow) nvkGovRow.style.display = nvkTrigger && nvkTrigger.value === 'Governance approval' ? '' : 'none';
   if (nvkDaoRow) nvkDaoRow.style.display = nvkTrigger && nvkTrigger.value === 'DAO approval' ? '' : 'none';
@@ -1667,7 +1681,8 @@ function updateScore() {
   const delayEl = document.getElementById('delay-sel');
   const scopeEl = document.getElementById('vk-scope');
   if (!delayEl || !scopeEl) return;
-  const delay = parseInt(delayEl.value) || 30;
+  const isCustomDelay = delayEl.value === 'custom';
+  const delay = isCustomDelay ? 86400 : (parseInt(delayEl.value) || 30);
   const scope = scopeEl.value || '';
 
   let score = 42;
@@ -1699,7 +1714,7 @@ function updateScore() {
     : score >= 70 ? 'Strong \u2014 high correlation resistance'
     : score >= 55 ? 'Moderate \u2014 good for most use cases'
     : 'Basic \u2014 consider longer delay';
-  const delayLbl = selTrig === 'time' ? (delay >= 86400 ? Math.floor(delay / 86400) + 'd' : '<1d') : selTrig;
+  const delayLbl = selTrig === 'time' ? (isCustomDelay ? 'custom' : (delay >= 86400 ? Math.floor(delay / 86400) + 'd' : '<1d')) : selTrig;
   detailEl.innerHTML = 'Shielded pool: Groth16 ZK proof<br>Key delay: ' + delayLbl + '<br>Batch mix: ' + (recipients.length > 1 ? recipients.length + ' outputs' : 'single output');
 }
 
@@ -1726,6 +1741,21 @@ function renderVKConfigs() {
 }
 
 function rmVKConfig(i) { vkConfigs.splice(i, 1); renderVKConfigs(); }
+
+function getScheduleReleaseConfig(createdAt) {
+  const delayEl = document.getElementById('delay-sel');
+  const value = delayEl ? delayEl.value : '30';
+  if (value === 'custom') {
+    const dateValue = (document.getElementById('custom-release-date') || {}).value || '';
+    const timeValue = (document.getElementById('custom-release-time') || {}).value || '';
+    const unlockTime = dateValue && timeValue ? Date.parse(dateValue + 'T' + timeValue + ':00') : NaN;
+    if (!unlockTime || Number.isNaN(unlockTime)) return { error: 'Choose a valid custom release date and time.' };
+    if (unlockTime <= Date.now()) return { error: 'Choose a custom release time in the future.' };
+    return { delay: Math.max(0, Math.ceil((unlockTime - createdAt) / 1000)), unlockTime, releaseTrigger: 'custom_time', triggerLabel: 'Custom date/time' };
+  }
+  const delay = parseInt(value || '30', 10) || 30;
+  return { delay, unlockTime: createdAt + delay * 1000, releaseTrigger: 'time', triggerLabel: 'Time delay' };
+}
 
 function isDisbursementReleased(d) {
   if (!d) return false;
@@ -1837,32 +1867,85 @@ function renderStoredViewingKeys() {
   });
 }
 
-function buildReportFromDisbursement(d) {
-  const txs = (d.recipients || []).map((recipient, index) => {
-    const gross = Number(recipient.amount || 0);
-    const fee = Math.round((gross * VARIABLE_FEE) * 100) / 100;
-    const prior = (d.recipients || []).slice(0, index).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function normalizeScopeLabel(scope) {
+  const raw = String(scope || 'Full audit trail').split('(')[0].trim();
+  if (/amounts only/i.test(raw)) return 'Amounts only';
+  if (/timestamps only/i.test(raw)) return 'Timestamps only';
+  if (/aggregate totals only/i.test(raw)) return 'Aggregate totals only';
+  return 'Full audit trail';
+}
+
+function createStoredTransactions(recipientRows, signature, timestamp, commitment, token) {
+  const rows = (recipientRows || []).map((recipient, index) => ({
+    recipient: recipient.recipient || recipient.addr || 'recipient-' + (index + 1),
+    gross: roundMoney(recipient.gross ?? recipient.amount),
+    token: recipient.token || token || activeToken
+  }));
+  const totalGross = roundMoney(rows.reduce((sum, row) => sum + row.gross, 0));
+  const totalFeeTarget = rows.length ? roundMoney(totalGross * VARIABLE_FEE + 5) : 0;
+  const fixedShare = rows.length ? 5 / rows.length : 0;
+  let feeSoFar = 0;
+  let runningNet = 0;
+  return rows.map((row, index) => {
+    const isLast = index === rows.length - 1;
+    const fee = isLast ? roundMoney(totalFeeTarget - feeSoFar) : roundMoney(row.gross * VARIABLE_FEE + fixedShare);
+    feeSoFar = roundMoney(feeSoFar + fee);
+    const net = roundMoney(row.gross - fee);
+    runningNet = roundMoney(runningNet + net);
     return {
       txType: 'send',
-      gross,
+      gross: row.gross,
       fee,
-      net: Math.round((gross - fee) * 100) / 100,
-      runningBalance: Math.round((prior + gross) * 100) / 100,
-      timestamp: d.executedAt || d.created,
-      signature: d.txSignature || 'pending',
-      commitment: d.commitment || 'shielded',
-      recipient: recipient.addr || 'recipient-' + (index + 1)
+      net,
+      runningBalance: runningNet,
+      recipient: row.recipient,
+      timestamp,
+      signature: signature || 'pending',
+      commitment: commitment || 'shielded',
+      token: row.token
     };
   });
-  const total = Number(d.amount || 0);
-  const totalFee = txs.reduce((sum, tx) => sum + tx.fee, 0);
+}
+
+function summarizeTransactions(transactions) {
+  const txs = Array.isArray(transactions) ? transactions : [];
+  const totalSent = roundMoney(txs.reduce((sum, tx) => sum + Number(tx.gross || 0), 0));
+  const totalFees = roundMoney(txs.reduce((sum, tx) => sum + Number(tx.fee || 0), 0));
+  const netTotal = roundMoney(txs.reduce((sum, tx) => sum + Number(tx.net || 0), 0));
   return {
-    summary: {
-      totalDeposited: total,
-      totalWithdrawn: 0,
-      runningBalance: Math.round((total - totalFee) * 100) / 100,
-      txCount: txs.length
-    },
+    totalDeposited: totalSent,
+    totalSent,
+    totalWithdrawn: 0,
+    totalFees,
+    netTotal,
+    runningBalance: netTotal,
+    txCount: txs.length
+  };
+}
+
+function getStoredTransactionsForDisbursement(d) {
+  if (Array.isArray(d.transactions) && d.transactions.length) return d.transactions;
+  if (Array.isArray(d.transactionRows) && d.transactionRows.length) return d.transactionRows;
+  const generated = createStoredTransactions(d.recipients || [], d.txSignature, d.executedAt || d.created, d.commitment, d.token);
+  d.transactions = generated;
+  d.transactionSummary = summarizeTransactions(generated);
+  return generated;
+}
+
+function buildReportFromDisbursement(d) {
+  const txs = getStoredTransactionsForDisbursement(d);
+  const summary = { ...summarizeTransactions(txs), ...(d.transactionSummary || {}) };
+  summary.totalSent = summary.totalSent ?? summary.totalDeposited ?? 0;
+  summary.totalFees = summary.totalFees ?? roundMoney((summary.totalSent || 0) - (summary.netTotal || summary.runningBalance || 0));
+  summary.netTotal = summary.netTotal ?? summary.runningBalance ?? roundMoney((summary.totalSent || 0) - (summary.totalFees || 0));
+  summary.totalDeposited = summary.totalDeposited ?? summary.totalSent;
+  summary.runningBalance = summary.runningBalance ?? summary.netTotal;
+  return {
+    summary,
     transactions: txs
   };
 }
@@ -1884,6 +1967,11 @@ async function submitDisb() {
     if (!liveProvider) { toast(walletLabel(activeWalletType) + ' not found', 'Open or install the selected Solana wallet.'); return; }
     await refreshWalletBalance();
     if (devnetSolBalance <= 0) { toast('Wallet has no devnet SOL for fees', 'Switch to Demo Mode or fund this wallet on devnet.'); return; }
+  }
+  const preflightRelease = selTrig === 'time' ? getScheduleReleaseConfig(Date.now()) : null;
+  if (preflightRelease && preflightRelease.error) {
+    toast('Invalid release time', preflightRelease.error);
+    return;
   }
 
   const btn = document.querySelector('#page-schedule .btn.primary.full');
@@ -1938,11 +2026,17 @@ async function submitDisb() {
     const finalNk = result.nk ? Uint8Array.from(result.nk) : nk;
     const finalNkDisplay = result.nkDisplay || nkDisplay;
 
-    const delay = parseInt((document.getElementById('delay-sel') || {}).value || '30');
     const createdAt = Date.now();
+    const scheduleRelease = selTrig === 'time'
+      ? { ...preflightRelease, delay: Math.max(0, Math.ceil((preflightRelease.unlockTime - createdAt) / 1000)) }
+      : { delay: 0, unlockTime: null, releaseTrigger: selTrig, triggerLabel: selTrig };
+    const delay = scheduleRelease.delay || 0;
     const govThreshold = (document.getElementById('gov-thresh') || {}).value || '2/3 multisig approval';
     const daoTotalMembers = parseInt((document.getElementById('dao-total-members') || {}).value || '50', 10) || 50;
     const govConfig = resolveGovernanceConfig(govThreshold, { daoTotalMembers });
+    const selectedVisibilityScope = normalizeScopeLabel((vkConfigs[0] || {}).scope || (document.getElementById('vk-scope') || {}).value || 'Full audit trail');
+    const transactionRows = createStoredTransactions(recipientSnapshot, result.signature, createdAt, result.commitment || outputUtxo.commitment, activeToken);
+    const transactionSummary = summarizeTransactions(transactionRows);
     const newD = {
       id: nextId++,
       label,
@@ -1950,13 +2044,17 @@ async function submitDisb() {
       amount: total,
       recips: recipients.length,
       recipients: recipientSnapshot,
+      transactions: transactionRows,
+      transactionSummary,
+      scope: selectedVisibilityScope,
+      visibilityScope: selectedVisibilityScope,
       status:'active',
       trigger: selTrig,
-      releaseTrigger: selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : selTrig,
+      releaseTrigger: selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : (selTrig === 'time' ? scheduleRelease.releaseTrigger : selTrig),
       delay,
       created: createdAt,
       executedAt: createdAt,
-      unlockTime: selTrig === 'time' ? createdAt + delay * 1000 : null,
+      unlockTime: selTrig === 'time' ? scheduleRelease.unlockTime : null,
       txSignature: result.signature,
       walletPublicKey: result.walletPublicKey || depositorPublicKey || '',
       walletType: activeWalletType,
@@ -1991,6 +2089,8 @@ async function submitDisb() {
       unlockTime: newD.unlockTime,
       amount: newD.amount,
       recipients: newD.recips,
+      transactions: newD.transactions,
+      transactionSummary: newD.transactionSummary,
       txSignature: newD.txSignature,
       walletPublicKey: newD.walletPublicKey,
       walletType: newD.walletType,
@@ -1999,9 +2099,10 @@ async function submitDisb() {
       demoTx: newD.demoTx,
       createdAt: newD.created,
       recipient: 'Scheduled release',
-      scope: 'Full audit trail',
-      trigger: selTrig === 'time' ? 'Time delay' : (selTrig === 'gov' ? 'Governance approval' : selTrig),
-      releaseTrigger: selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : selTrig,
+      scope: selectedVisibilityScope,
+      visibilityScope: selectedVisibilityScope,
+      trigger: selTrig === 'time' ? scheduleRelease.triggerLabel : (selTrig === 'gov' ? 'Governance approval' : selTrig),
+      releaseTrigger: selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : (selTrig === 'time' ? scheduleRelease.releaseTrigger : selTrig),
       approvals: selTrig === 'gov' ? [] : undefined,
       requiredApprovals: selTrig === 'gov' ? govConfig.requiredApprovals : undefined,
       guardians: selTrig === 'gov' ? govConfig.guardians : undefined,
@@ -2062,11 +2163,11 @@ function renderDisbCards() {
   }
 
   disbursements.forEach(d => {
-    const elapsed  = Date.now() - d.created;
-    const remSec   = d.trigger === 'time' ? Math.max(0, Math.ceil((d.delay * 1000 - elapsed) / 1000)) : null;
+    const releaseAt = d.unlockTime || (d.created + d.delay * 1000);
+    const remSec   = d.trigger === 'time' ? Math.max(0, Math.ceil((releaseAt - Date.now()) / 1000)) : null;
     const released = isDisbursementReleased(d);
     const nkText   = displayNkForDisbursement(d);
-    const feeUSD   = (d.amount * VARIABLE_FEE + 5).toFixed(2);
+    const feeUSD   = (d.transactionSummary || summarizeTransactions(getStoredTransactionsForDisbursement(d))).totalFees.toFixed(2);
     const demoBadge = d.demoTx || d.executionMode === 'demo'
       ? '<span class="badge pending" style="margin-left:6px">DEMO MODE \u2014 simulated tx</span>'
       : '';
@@ -2092,7 +2193,7 @@ function renderDisbCards() {
               : '<div class="cdown" style="font-size:20px;color:var(--tx2)">Released</div><div class="cdown-lbl">nk key active</div>') +
           '<div class="div" style="margin:10px 0"></div>' +
           '<div class="fs10 tx3 mono" style="line-height:1.9">' +
-            'Trigger: ' + (d.trigger === 'time' ? 'Time delay' : d.trigger === 'gov' ? 'Governance vote' : 'Block height') + '<br>' +
+            'Trigger: ' + (d.releaseTrigger === 'custom_time' ? 'Custom date/time' : (d.trigger === 'time' ? 'Time delay' : d.trigger === 'gov' ? 'Governance vote' : 'Block height')) + '<br>' +
             'Program: <span style="color:var(--tx2)">' + CLOAK_PROGRAM_ID.slice(0,12) + '\u2026</span><br>' +
             (d.nkDisplay ? 'nk: <span id="nk-' + d.id + '" style="color:var(--am)">' + nkText + '</span>' : '') +
           '</div>' +
@@ -2121,7 +2222,8 @@ function startCountdowns() {
     if (!cdEl) return;
 
     const tick = () => {
-      const rem = Math.max(0, Math.ceil((d.delay * 1000 - (Date.now() - d.created)) / 1000));
+      const releaseAt = d.unlockTime || (d.created + d.delay * 1000);
+      const rem = Math.max(0, Math.ceil((releaseAt - Date.now()) / 1000));
       cdEl.textContent = fmtTime(rem);
       if (rem <= 0) {
         registerReleasedViewingKey(d);
@@ -2140,7 +2242,8 @@ function startCountdowns() {
 
     tick();
     const iv = setInterval(() => {
-      const rem = Math.ceil((d.delay * 1000 - (Date.now() - d.created)) / 1000);
+      const releaseAt = d.unlockTime || (d.created + d.delay * 1000);
+      const rem = Math.ceil((releaseAt - Date.now()) / 1000);
       if (rem <= 0) { clearInterval(iv); }
       tick();
     }, 1000);
@@ -2181,8 +2284,9 @@ async function issueVK() {
   if (isCustomTime) {
     const dateValue = (document.getElementById('nvk-release-date') || {}).value || '';
     const timeValue = (document.getElementById('nvk-release-time') || {}).value || '';
-    unlockTime = dateValue && timeValue ? Date.parse(dateValue + 'T' + timeValue + ':00Z') : NaN;
-    if (!unlockTime || Number.isNaN(unlockTime)) { toast('Invalid release time', 'Choose a UTC release date and time.'); return; }
+    unlockTime = dateValue && timeValue ? Date.parse(dateValue + 'T' + timeValue + ':00') : NaN;
+    if (!unlockTime || Number.isNaN(unlockTime)) { toast('Invalid release time', 'Choose a local release date and time.'); return; }
+    if (unlockTime <= Date.now()) { toast('Invalid release time', 'Choose a custom release time in the future.'); return; }
   }
   const governanceThresholdType = (document.getElementById('nvk-gov-thresh') || {}).value || '2/3 multisig approval';
   const nvkDaoTotalMembers = parseInt((document.getElementById('nvk-dao-total-members') || {}).value || '50', 10) || 50;
@@ -2192,6 +2296,8 @@ async function issueVK() {
 
   const released = isImmediate;
   const requiresApproval = isGovernance || isDao;
+  const attachedTransactions = getStoredTransactionsForDisbursement(attachedDisb);
+  const attachedSummary = attachedDisb.transactionSummary || summarizeTransactions(attachedTransactions);
   upsertViewingKeyRecord({
     id: Date.now(),
     disbursementId: attachedDisb.id,
@@ -2207,11 +2313,14 @@ async function issueVK() {
     unlockTime,
     amount: attachedDisb.amount || 0,
     recipients: attachedDisb.recips || 0,
+    transactions: attachedTransactions,
+    transactionSummary: attachedSummary,
     txSignature: attachedDisb.txSignature || '',
     createdAt: Date.now(),
     recipient: recip,
     requesterLabel: recip,
-    scope,
+    scope: normalizeScopeLabel(scope),
+    visibilityScope: normalizeScopeLabel(scope),
     trigger,
     releaseTrigger: isDao ? 'dao' : (isGovernance ? 'governance' : (isCustomTime ? 'custom_time' : (isImmediate ? 'immediate' : 'time'))),
     approvals: requiresApproval ? [] : undefined,
@@ -2225,6 +2334,7 @@ async function issueVK() {
     daoTotalMembers: isDao ? govConfig.daoTotalMembers : undefined,
     releasedAt: released ? Date.now() : null
   });
+  saveStoredDisbursements();
 
   const statEl = document.getElementById('vk-stat-count');
   if (statEl) statEl.textContent = parseInt(statEl.textContent || '0') + 1;
@@ -2314,6 +2424,105 @@ function pasteDemo() {
     : DEMO_AUDIT_KEY;
 }
 
+function renderScopedAuditResult(selectedDisb, matchedViewingKey, report) {
+  const scope = normalizeScopeLabel(matchedViewingKey?.scope || selectedDisb?.scope || selectedDisb?.visibilityScope || 'Full audit trail');
+  const token = selectedDisb ? selectedDisb.token : 'USDC';
+  const txs = report.transactions || [];
+  const summary = { ...summarizeTransactions(txs), ...(report.summary || {}) };
+  summary.totalSent = summary.totalSent ?? summary.totalDeposited ?? 0;
+  summary.totalFees = summary.totalFees ?? 0;
+  summary.netTotal = summary.netTotal ?? summary.runningBalance ?? roundMoney(summary.totalSent - summary.totalFees);
+  summary.txCount = summary.txCount ?? txs.length;
+  const firstTimestamp = txs[0]?.timestamp || selectedDisb?.executedAt || selectedDisb?.created || Date.now();
+  const scopeMeta = scope + ' \u00b7 ' + (selectedDisb ? selectedDisb.recips : txs.length) + ' transaction' + ((selectedDisb ? selectedDisb.recips : txs.length) !== 1 ? 's' : '') + ' \u00b7 nk scope verified';
+
+  document.getElementById('audit-empty').style.display = 'none';
+  document.getElementById('audit-result').style.display = 'block';
+  document.getElementById('audit-name').textContent  = selectedDisb ? selectedDisb.label : 'Grant Batch #7';
+  document.getElementById('audit-scope').textContent = selectedDisb ? scopeMeta : 'Full audit trail \u00b7 demo report \u00b7 nk scope verified';
+
+  const totalEl = document.getElementById('audit-total');
+  const recipsEl = document.getElementById('audit-recips');
+  const timeEl = document.getElementById('audit-time');
+  if (scope === 'Timestamps only') {
+    totalEl.textContent = 'Hidden by scope';
+    recipsEl.textContent = 'Hidden by scope';
+    timeEl.textContent = new Date(firstTimestamp).toLocaleString();
+  } else if (scope === 'Amounts only') {
+    totalEl.textContent = '$' + summary.totalSent.toLocaleString() + ' ' + token;
+    recipsEl.textContent = 'Hidden by scope';
+    timeEl.textContent = 'Hidden by scope';
+  } else if (scope === 'Aggregate totals only') {
+    totalEl.textContent = '$' + summary.totalSent.toLocaleString() + ' ' + token;
+    recipsEl.textContent = summary.txCount + ' txs';
+    timeEl.textContent = 'Hidden by scope';
+  } else {
+    totalEl.textContent = '$' + summary.totalSent.toLocaleString() + ' ' + token;
+    recipsEl.textContent = (selectedDisb ? selectedDisb.recips : txs.length) + ' recipient' + ((selectedDisb ? selectedDisb.recips : txs.length) !== 1 ? 's' : '');
+    timeEl.textContent = new Date(firstTimestamp).toLocaleString();
+  }
+
+  const rptEl = document.getElementById('compliance-report-output');
+  if (rptEl) {
+    let lines = [
+      '<span class="cmt">// toComplianceReport() output scoped as: ' + scope + '</span>',
+      'totalDeposited:  <span class="str">$' + summary.totalSent.toLocaleString() + '</span>',
+      'totalSent:       <span class="str">$' + summary.totalSent.toLocaleString() + '</span>',
+      'totalFees:       <span class="str">$' + summary.totalFees.toLocaleString() + '</span>',
+      'netTotal:        <span class="str">$' + summary.netTotal.toLocaleString() + '</span>',
+      'txCount:         <span class="str">' + summary.txCount + '</span>'
+    ];
+    if (scope === 'Full audit trail') {
+      lines.push('<span class="cmt">// Per-tx: timestamp, recipient, gross, fee, net, balance, signature</span>');
+      lines = lines.concat(txs.map(tx =>
+        '{ time:<span class="str">\'' + new Date(tx.timestamp).toLocaleString() + '\'</span>, recipient:<span class="str">\'' + tx.recipient + '\'</span>, gross:<span class="str">' + tx.gross.toLocaleString() + '</span>, fee:<span class="str">' + tx.fee.toLocaleString() + '</span>, net:<span class="str">' + tx.net.toLocaleString() + '</span>, balance:<span class="str">' + tx.runningBalance.toLocaleString() + '</span>, sig:<span class="str">\'' + String(tx.signature || '').slice(0,12) + '\u2026\'</span> }'
+      ));
+    } else if (scope === 'Amounts only') {
+      lines.push('<span class="cmt">// Per-tx: amounts + fees only; recipients, timestamps, and signatures hidden</span>');
+      lines = lines.concat(txs.map(tx =>
+        '{ gross:<span class="str">' + tx.gross.toLocaleString() + '</span>, fee:<span class="str">' + tx.fee.toLocaleString() + '</span>, net:<span class="str">' + tx.net.toLocaleString() + '</span> }'
+      ));
+    } else if (scope === 'Timestamps only') {
+      lines = [
+        '<span class="cmt">// toComplianceReport() output scoped as: Timestamps only</span>',
+        'txCount:         <span class="str">' + summary.txCount + '</span>',
+        '<span class="cmt">// Amounts, fees, recipients, balances, and signatures hidden</span>'
+      ].concat(txs.map(tx => '{ time:<span class="str">\'' + new Date(tx.timestamp).toLocaleString() + '\'</span> }'));
+    } else {
+      lines.push('<span class="cmt">// Per-transaction rows hidden by Aggregate totals only scope</span>');
+    }
+    rptEl.innerHTML = lines.join('\n');
+  }
+
+  const logEl = document.getElementById('audit-log-rows');
+  if (!logEl) return;
+  logEl.innerHTML = '';
+  if (scope === 'Aggregate totals only') {
+    const row = document.createElement('div');
+    row.className = 'log-item';
+    row.innerHTML = '<div class="log-t">scope</div><div class="log-dot am"></div><div class="log-msg"><strong>DETAILS HIDDEN</strong> \u2014 per-transaction rows are not visible for aggregate-only keys<span class="sdk-tag">SDK</span></div>';
+    logEl.appendChild(row);
+    return;
+  }
+  txs.forEach(tx => {
+    const row = document.createElement('div');
+    row.className = 'log-item';
+    const timeText = scope === 'Amounts only' ? 'hidden' : new Date(tx.timestamp).toLocaleTimeString();
+    let body = '<strong>' + tx.txType.toUpperCase() + '</strong> \u2014 ';
+    if (scope === 'Timestamps only') {
+      body += 'executed at ' + new Date(tx.timestamp).toLocaleString();
+    } else if (scope === 'Amounts only') {
+      body += 'gross: $' + tx.gross.toLocaleString() + ' \u00b7 fee: $' + tx.fee.toLocaleString() + ' \u00b7 net: <span style="color:var(--gr)">$' + tx.net.toLocaleString() + '</span>';
+    } else {
+      body += (tx.recipient ? 'recipient: ' + tx.recipient + ' \u00b7 ' : '') +
+        'gross: $' + tx.gross.toLocaleString() + ' \u00b7 fee: $' + tx.fee.toLocaleString() + ' \u00b7 net: <span style="color:var(--gr)">$' + tx.net.toLocaleString() + '</span> \u00b7 balance: $' + tx.runningBalance.toLocaleString() +
+        (tx.signature ? ' \u00b7 sig: ' + String(tx.signature).slice(0,12) + '\u2026' : '');
+    }
+    row.innerHTML = '<div class="log-t">' + timeText + '</div><div class="log-dot gr"></div><div class="log-msg">' + body + '<span class="sdk-tag">SDK</span></div>';
+    logEl.appendChild(row);
+  });
+}
+
 async function runDecrypt() {
   reconcileViewingKeyReleases();
   const keyEl = document.getElementById('audit-key');
@@ -2358,51 +2567,11 @@ async function runDecrypt() {
       report = await sdk_toComplianceReport(scanResult);
     }
 
-    document.getElementById('audit-empty').style.display = 'none';
-    document.getElementById('audit-result').style.display = 'block';
-    document.getElementById('audit-name').textContent  = selectedDisb ? selectedDisb.label : 'Grant Batch #7';
-    document.getElementById('audit-scope').textContent = selectedDisb
-      ? 'Full audit trail \u00b7 ' + selectedDisb.recips + ' recipient' + (selectedDisb.recips !== 1 ? 's' : '') + ' \u00b7 nk scope verified'
-      : 'Full audit trail \u00b7 12 recipients \u00b7 nk scope verified';
-    document.getElementById('audit-total').textContent = '$' + (selectedDisb ? selectedDisb.amount : report.summary.totalDeposited).toLocaleString() + ' ' + (selectedDisb ? selectedDisb.token : 'USDC');
-    document.getElementById('audit-recips').textContent = selectedDisb ? selectedDisb.recips + ' recipient' + (selectedDisb.recips !== 1 ? 's' : '') : report.transactions.length + ' txs';
-    document.getElementById('audit-time').textContent  = selectedDisb
-      ? new Date(selectedDisb.executedAt || selectedDisb.created).toLocaleString()
-      : 'Today ' + new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone:'UTC'}) + ' UTC';
-
-    const rptEl = document.getElementById('compliance-report-output');
-    if (rptEl) rptEl.innerHTML =
-      '<span class="cmt">// toComplianceReport() output:</span>\n' +
-      'totalDeposited:  <span class="str">$' + report.summary.totalDeposited.toLocaleString() + '</span>\n' +
-      'totalWithdrawn:  <span class="str">$' + report.summary.totalWithdrawn.toLocaleString() + '</span>\n' +
-      'runningBalance:  <span class="str">$' + report.summary.runningBalance.toLocaleString() + '</span>\n' +
-      'txCount:         <span class="str">' + report.summary.txCount + '</span>\n' +
-      '<span class="cmt">// Per-tx: gross, fee, net, runningBalance</span>\n' +
-      report.transactions.map(tx =>
-        '{ type:<span class="str">\'' + tx.txType + '\'</span>, gross:<span class="str">' + tx.gross.toLocaleString() + '</span>, fee:<span class="str">' + tx.fee + '</span>, net:<span class="str">' + tx.net.toLocaleString() + '</span>, balance:<span class="str">' + tx.runningBalance.toLocaleString() + '</span> }'
-      ).join('\n');
-
-    const logEl = document.getElementById('audit-log-rows');
-    if (logEl) {
-      logEl.innerHTML = '';
-      report.transactions.forEach(tx => {
-        const row = document.createElement('div');
-        row.className = 'log-item';
-        row.innerHTML =
-          '<div class="log-t">' + new Date(tx.timestamp).toLocaleTimeString() + '</div>' +
-          '<div class="log-dot gr"></div>' +
-          '<div class="log-msg"><strong>' + tx.txType.toUpperCase() + '</strong> \u2014 ' +
-            (tx.recipient ? 'recipient: ' + tx.recipient + ' \u00b7 ' : '') +
-            'gross: $' + tx.gross.toLocaleString() + ' \u00b7 ' +
-            'fee: $' + tx.fee + ' \u00b7 ' +
-            'net: <span style="color:var(--gr)">$' + tx.net.toLocaleString() + '</span> \u00b7 ' +
-            'balance: $' + tx.runningBalance.toLocaleString() +
-            (tx.signature ? ' \u00b7 sig: ' + String(tx.signature).slice(0,12) + '\u2026' : '') +
-            '<span class="sdk-tag">SDK</span>' +
-          '</div>';
-        logEl.appendChild(row);
-      });
+    if (selectedDisb) {
+      selectedDisb.transactionSummary = summarizeTransactions(report.transactions);
+      saveStoredDisbursements();
     }
+    renderScopedAuditResult(selectedDisb, matchingViewingKey, report);
 
     toast('Decrypted', 'scanTransactions() + toComplianceReport() complete');
   } catch(err) {
