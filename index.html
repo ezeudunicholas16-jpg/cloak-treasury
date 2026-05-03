@@ -231,6 +231,16 @@ textarea{resize:none;height:70px;line-height:1.6}
 .g-item.rejected .g-status{color:var(--rd)}
 
 /* ── PROGRESS ────────────────────────────────── */
+.reg-list{display:grid;gap:7px;margin:8px 0 12px}
+.reg-slot{display:grid;grid-template-columns:34px minmax(0,1fr) 112px auto;gap:8px;align-items:center;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:8px}
+.reg-slot.signed{border-color:rgba(127,255,212,.18);background:var(--gr4)}
+.reg-label{font:600 10px var(--mono);color:var(--tx2)}
+.reg-meta{font:10px var(--mono);color:var(--tx3);line-height:1.5}
+.reg-status{font:9px var(--mono);color:var(--tx3);margin-top:2px}
+.reg-slot.signed .reg-status{color:var(--gr)}
+.reg-provider{padding:6px 24px 6px 8px;font-size:10px}
+.reg-slot .btn{padding:6px 8px;font-size:10px;white-space:nowrap}
+
 .ptrack{height:2px;background:var(--s3);border-radius:1px}
 .pfill{height:2px;border-radius:1px;background:var(--gr);transition:width .4s ease}
 .pfill.am{background:var(--am)}
@@ -377,9 +387,9 @@ textarea{resize:none;height:70px;line-height:1.6}
 
   <div class="sdk-rail">
     <div class="dot"></div>
-    <span>SDK: <code>@cloak.dev/sdk</code></span>
+    <span>SDK: <code>@cloak.dev/sdk-devnet</code></span>
     <span style="color:var(--tx3)">·</span>
-    <span>Program: <code>zh1eLd6r…qRkW</code></span>
+    <span>Program: <code>Zc1kHfp4...s27h</code></span>
     <span style="color:var(--tx3)">·</span>
     <span>Proof: <code>Groth16</code></span>
     <span style="color:var(--tx3)">·</span>
@@ -477,8 +487,8 @@ textarea{resize:none;height:70px;line-height:1.6}
           <div class="sdk-block-title">REAL SDK CALL — will execute on submit</div>
           <div class="sdk-code" id="sdk-preview-deposit"><span class="cmt">// Configure payment to generate this call:</span>
 <span class="fn">transact</span>({
-  inputUtxos: [<span class="fn">createZeroUtxo</span>(<span class="param">USDC_MINT</span>)],
-  outputUtxos: [<span class="fn">createUtxo</span>(<span class="param">amount</span>, <span class="param">owner</span>, <span class="param">USDC_MINT</span>)],
+  inputUtxos: [<span class="fn">createZeroUtxo</span>(<span class="param">selectedMint</span>)],
+  outputUtxos: [<span class="fn">createUtxo</span>(<span class="param">amount</span>, <span class="param">owner</span>, <span class="param">selectedMint</span>)],
   externalAmount: <span class="param">amount</span>,
   depositor: <span class="param">signer.publicKey</span>,
 }, baseOptions)</div>
@@ -585,7 +595,7 @@ textarea{resize:none;height:70px;line-height:1.6}
           <div class="frow" id="custom-release-row" style="display:none"><label>Custom release date/time</label><input type="date" id="custom-release-date"><input type="time" id="custom-release-time"><div class="fs10 tx3 mono" style="padding-top:8px">Uses local time</div></div>
         </div>
         <div id="tc-block" style="display:none">
-          <div class="frow"><label>Release at block height</label><input type="number" id="block-inp" placeholder="e.g. 300000000"></div>
+          <div class="frow"><label id="block-release-label">Release at block height</label><input type="number" id="block-inp" placeholder="e.g. 300000000"><div class="fs10 tx3 mono" id="block-height-hint" style="padding-top:8px">Current block height: loading...</div></div>
         </div>
         <div id="tc-gov" style="display:none">
           <div class="frow"><label>Governance threshold</label>
@@ -595,7 +605,8 @@ textarea{resize:none;height:70px;line-height:1.6}
               <option>DAO majority vote</option>
             </select>
           </div>
-          <div class="frow" id="dao-members-row" style="display:none"><label>Total DAO members</label><input type="number" id="dao-total-members" min="1" value="50" oninput="updateScore()"></div>
+          <div class="frow" id="dao-members-row" style="display:none"><label>Total DAO members</label><input type="number" id="dao-total-members" min="1" max="50" value="50" oninput="toggleDaoControls()"></div>
+          <div class="reg-list" id="gov-registration-list"></div>
         </div>
         <div class="frow">
           <label>Key expiry</label>
@@ -701,12 +712,13 @@ textarea{resize:none;height:70px;line-height:1.6}
       </div>
       <div class="frow" id="nvk-custom-time-row" style="display:none"><label>Release date/time</label><input type="date" id="nvk-release-date"><input type="time" id="nvk-release-time"><div class="fs10 tx3 mono" style="padding-top:8px">Uses local time</div></div>
       <div class="frow" id="nvk-gov-threshold-row" style="display:none"><label>Governance threshold</label>
-        <select id="nvk-gov-thresh">
+        <select id="nvk-gov-thresh" onchange="toggleDaoControls()">
           <option>2/3 multisig approval</option>
           <option>3/5 guardian consensus</option>
         </select>
       </div>
-      <div class="frow" id="nvk-dao-members-row" style="display:none"><label>Total DAO members</label><input type="number" id="nvk-dao-total-members" min="1" value="50"></div>
+      <div class="frow" id="nvk-dao-members-row" style="display:none"><label>Total DAO members</label><input type="number" id="nvk-dao-total-members" min="1" max="50" value="50" oninput="toggleDaoControls()"></div>
+      <div class="reg-list" id="nvk-registration-list"></div>
       <div class="frow"><label>Attach to disbursement</label>
         <select id="nvk-disb">
           <option>Q3 Payroll #2</option>
@@ -733,6 +745,16 @@ textarea{resize:none;height:70px;line-height:1.6}
         <div class="g-item"><div class="g-av">G1</div><div class="g-name">G1</div><div class="g-status">Pending</div></div>
         <div class="g-item"><div class="g-av">G2</div><div class="g-name">G2</div><div class="g-status">Pending</div></div>
         <div class="g-item"><div class="g-av">G3</div><div class="g-name">G3</div><div class="g-status">Pending</div></div>
+      </div>
+      <div class="fs10 tx3 mono" id="voter-status" style="margin:6px 0 10px">Connected voter wallet: none</div>
+      <div class="frow">
+        <label>Voter wallet provider</label>
+        <select id="gov-voter-provider" onchange="setGovernanceVoterProvider(this.value)">
+          <option value="phantom">Phantom</option>
+          <option value="solflare">Solflare</option>
+          <option value="backpack">Backpack</option>
+          <option value="glow">Glow</option>
+        </select>
       </div>
       <div class="flex gap6 mt12">
         <button class="btn primary" style="flex:1" onclick="castVote(true)">
@@ -893,8 +915,9 @@ window.__cloakSdkReady = new Promise(function(resolve) {
 });
 
 var sdk_generateUtxoKeypair = function() {
+  var args = arguments;
   return window.__cloakSdkReady.then(function() {
-    return window.sdk_generateUtxoKeypair();
+    return window.sdk_generateUtxoKeypair.apply(window, args);
   });
 };
 var sdk_createZeroUtxo = function() {
@@ -937,7 +960,12 @@ var sdk_nkToDisplayString = function() {
 
 <script type="module">
 import {
+  CLOAK_DEVNET_PROGRAM_ID,
+  CLOAK_DEVNET_RELAY_URL,
   DEMO_MODE,
+  DEVNET_MOCK_USDC_MINT_ADDRESS,
+  DEVNET_NATIVE_SOL_MINT_ADDRESS,
+  DEVNET_RPC_URL as CLOAK_DEVNET_RPC_URL,
   sdk_createUtxo,
   sdk_createZeroUtxo,
   sdk_generateUtxoKeypair,
@@ -950,7 +978,12 @@ import {
 import { Connection as SolanaConnection, PublicKey as SolanaPublicKey } from '@solana/web3.js';
 
 Object.assign(window, {
+  CLOAK_DEVNET_PROGRAM_ID,
+  CLOAK_DEVNET_RELAY_URL,
   DEMO_MODE,
+  DEVNET_MOCK_USDC_MINT_ADDRESS,
+  DEVNET_NATIVE_SOL_MINT_ADDRESS,
+  CLOAK_DEVNET_RPC_URL,
   SolanaConnection,
   SolanaPublicKey,
   sdk_createUtxo,
@@ -968,17 +1001,23 @@ if (window.__resolveCloakSdkReady) window.__resolveCloakSdkReady();
 <script>
 // ═══════════════════════════════════════════════════════
 // CLOAK SDK INTEGRATION LAYER
-// SDK: @cloak.dev/sdk v0.1.5
+// SDK: @cloak.dev/sdk-devnet
 // sdk_* functions are imported from ./cloakservice.js above.
 // ═══════════════════════════════════════════════════════
 
 // ─── CONSTANTS (match SDK exactly) ───────────────────────────────────────────
-const CLOAK_PROGRAM_ID = 'zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW';
-const USDC_MINT        = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Devnet USDC
+const CLOAK_PROGRAM_ID = 'Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h';
+const USDC_MINT        = '61ro7AExqfk4dZYoCyRzTahahCC2TdUUZ4M5epMPunJf'; // Cloak Devnet mock USDC
 const USDT_MINT        = 'EJwZgeZrdC8TXTQbQBoL6bfuAnFUUy1PVCMB4DYPzVaS'; // Devnet USDT test mint
 const NATIVE_SOL_MINT  = 'So11111111111111111111111111111111111111112';
-const RELAY_URL        = 'https://api.cloak.ag';
+const RELAY_URL        = 'https://api.devnet.cloak.ag';
 const VARIABLE_FEE     = 0.003;
+const TOKEN_CONFIGS = {
+  SOL:  { symbol: 'SOL',  mint: NATIVE_SOL_MINT, decimals: 9 },
+  USDC: { symbol: 'USDC', mint: USDC_MINT, decimals: 6 },
+  USDT: { symbol: 'USDT', mint: USDT_MINT, decimals: 6 }
+};
+const ESTIMATED_SOL_FEE_LAMPORTS = 10_000_000n;
 
 // ─── APP STATE ────────────────────────────────────────────────────────────────
 let activeToken = 'USDC';   // NOTE: named activeToken to avoid clash with selToken()
@@ -1002,11 +1041,21 @@ let nextId   = 3;
 let selectedGovernanceKeyId = null;
 let connectedWalletPublicKey = '';
 let activeWalletType = 'phantom';
+let governanceVoterProviderType = 'phantom';
+let governanceVoterWalletAddress = '';
 let connectedWalletNetwork = 'devnet';
 let devnetSolBalance = 0;
 let executionMode = 'live';
 let pendingDemoApproval = null;
 let scheduledExecutionRunning = false;
+let currentSolanaBlockHeight = null;
+let solanaReleaseMetric = 'blockHeight';
+let solanaBlockHeightError = '';
+let lastBlockHeightFetchAt = 0;
+let blockHeightErrorNotified = false;
+let govRegistrationSlots = [];
+let nvkRegistrationSlots = [];
+let demoRegistrationSeq = 1;
 
 function loadStoredDisbursements() {
   try {
@@ -1018,6 +1067,11 @@ function loadStoredDisbursements() {
       const now = Date.now();
       d.createdAt = d.createdAt || d.created || now;
       d.created = d.created || d.createdAt;
+      if (d.releaseTrigger === 'block' || (d.trigger === 'block' && !d.releaseTrigger)) d.releaseTrigger = 'block_height';
+      if (d.releaseTrigger === 'block_height') {
+        d.releaseBlockHeight = Number(d.releaseBlockHeight || d.blockHeight || d.blockHeightRelease) || null;
+        d.released = !!d.released && !!d.executed;
+      }
       if (!d.executionTime && (d.executedAt || d.txSignature || d.status !== 'scheduled')) {
         d.executionTime = d.executedAt || d.createdAt;
       }
@@ -1096,6 +1150,12 @@ function isSolanaWallet(type) {
   return ['phantom', 'solflare', 'backpack', 'glow'].includes(type);
 }
 
+function governanceWalletOptions(selected) {
+  return ['phantom', 'solflare', 'backpack', 'glow'].map(type =>
+    '<option value="' + type + '"' + (type === selected ? ' selected' : '') + '>' + walletLabel(type) + '</option>'
+  ).join('');
+}
+
 function getSolanaProvider(type) {
   if (type === 'phantom') return window.phantom?.solana || (window.solana?.isPhantom ? window.solana : null);
   if (type === 'solflare') return window.solflare || (window.solana?.isSolflare ? window.solana : null);
@@ -1142,6 +1202,9 @@ function setExecutionMode(mode) {
   executionMode = mode === 'demo' ? 'demo' : 'live';
   saveExecutionMode();
   renderExecutionMode();
+  renderRegistrationSlots('schedule');
+  renderRegistrationSlots('viewingkey');
+  renderGovernancePanel();
   toast(executionMode === 'demo' ? 'Demo Mode enabled' : 'Live Mode enabled',
     executionMode === 'demo'
       ? 'Transactions are simulated and labeled demo.'
@@ -1253,6 +1316,242 @@ function resolveDemoApproval(approved) {
   }
 }
 
+function bytesToHex(bytes) {
+  const data = bytes?.signature || bytes;
+  return Array.from(data || []).map(b => Number(b).toString(16).padStart(2, '0')).join('');
+}
+
+function normalizeWalletAddress(value) {
+  return String(value || '').trim();
+}
+
+function governanceThresholdTypeFromText(value) {
+  const text = String(value || '');
+  if (text.includes('DAO')) return 'dao60';
+  if (text.includes('3/5')) return '3of5';
+  return '2of3';
+}
+
+function clampDaoMemberInput(id) {
+  const input = document.getElementById(id);
+  const value = Math.min(50, Math.max(1, parseInt((input || {}).value || '1', 10) || 1));
+  if (input && String(input.value) !== String(value)) input.value = String(value);
+  return value;
+}
+
+function getGovernanceSlotLabels(thresholdText, daoInputId) {
+  const type = governanceThresholdTypeFromText(thresholdText);
+  if (type === 'dao60') {
+    const count = clampDaoMemberInput(daoInputId);
+    return Array.from({ length: count }, (_, i) => 'DAO' + (i + 1));
+  }
+  return type === '3of5' ? ['G1', 'G2', 'G3', 'G4', 'G5'] : ['G1', 'G2', 'G3'];
+}
+
+function syncRegistrationSlots(kind) {
+  const isSchedule = kind === 'schedule';
+  const container = document.getElementById(isSchedule ? 'gov-registration-list' : 'nvk-registration-list');
+  if (!container) return [];
+
+  const thresholdText = isSchedule
+    ? ((document.getElementById('gov-thresh') || {}).value || '2/3 multisig approval')
+    : (((document.getElementById('nvk-trigger') || {}).value === 'DAO approval') ? 'DAO majority vote' : ((document.getElementById('nvk-gov-thresh') || {}).value || '2/3 multisig approval'));
+  const active = isSchedule ? selTrig === 'gov' : ['Governance approval', 'DAO approval'].includes((document.getElementById('nvk-trigger') || {}).value || '');
+  if (!active) {
+    container.innerHTML = '';
+    return [];
+  }
+
+  const labels = getGovernanceSlotLabels(thresholdText, isSchedule ? 'dao-total-members' : 'nvk-dao-total-members');
+  const current = isSchedule ? govRegistrationSlots : nvkRegistrationSlots;
+  const next = labels.map(label => {
+    const existing = current.find(slot => slot.label === label);
+    return existing || { label, providerType: 'phantom', walletAddress: '', registrationSignature: '', registeredAt: null };
+  });
+  if (isSchedule) govRegistrationSlots = next;
+  else nvkRegistrationSlots = next;
+  renderRegistrationSlots(kind);
+  return next;
+}
+
+function renderRegistrationSlotsLegacy(kind) {
+  const isSchedule = kind === 'schedule';
+  const container = document.getElementById(isSchedule ? 'gov-registration-list' : 'nvk-registration-list');
+  if (!container) return;
+  const slots = isSchedule ? govRegistrationSlots : nvkRegistrationSlots;
+  if (!slots.length) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = slots.map(slot => {
+    const signed = !!slot.walletAddress && !!slot.registrationSignature;
+    return '<div class="reg-slot ' + (signed ? 'signed' : '') + '">' +
+      '<div class="reg-label">' + escapeHtml(slot.label) + '</div>' +
+      '<div><div class="reg-meta">' + (signed ? shortAddress(slot.walletAddress) : 'No wallet registered') + '</div>' +
+      '<div class="reg-status">' + (signed ? (slot.demoSignature ? 'signed · demo' : 'signed') : 'pending signature') + '</div></div>' +
+      '<button class="btn sm" onclick="registerApprovalWallet(\'' + kind + '\',\'' + escapeHtml(slot.label) + '\')">Register wallet</button>' +
+    '</div>';
+  }).join('');
+}
+
+function renderRegistrationSlots(kind) {
+  const isSchedule = kind === 'schedule';
+  const container = document.getElementById(isSchedule ? 'gov-registration-list' : 'nvk-registration-list');
+  if (!container) return;
+  const slots = isSchedule ? govRegistrationSlots : nvkRegistrationSlots;
+  if (!slots.length) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = slots.map(slot => {
+    const signed = !!slot.walletAddress && !!slot.registrationSignature;
+    const providerType = slot.providerType || 'phantom';
+    return '<div class="reg-slot ' + (signed ? 'signed' : '') + '">' +
+      '<div class="reg-label">' + escapeHtml(slot.label) + '</div>' +
+      '<div><div class="reg-meta">' + (signed ? shortAddress(slot.walletAddress) : 'No wallet registered') + '</div>' +
+      '<div class="reg-status">' + (signed ? (slot.demoSignature ? 'signed - demo' : 'signed with ' + walletLabel(providerType)) : 'pending signature') + '</div></div>' +
+      '<select class="reg-provider" onchange="setRegistrationProvider(\'' + kind + '\',\'' + escapeHtml(slot.label) + '\',this.value)">' + governanceWalletOptions(providerType) + '</select>' +
+      '<button class="btn sm" onclick="registerApprovalWallet(\'' + kind + '\',\'' + escapeHtml(slot.label) + '\')">Register wallet</button>' +
+    '</div>';
+  }).join('');
+}
+
+function setRegistrationProvider(kind, label, providerType) {
+  const slots = kind === 'schedule' ? govRegistrationSlots : nvkRegistrationSlots;
+  const slot = slots.find(item => item.label === label);
+  if (!slot) return;
+  slot.providerType = isSolanaWallet(providerType) ? providerType : 'phantom';
+  slot.walletAddress = '';
+  slot.registrationSignature = '';
+  slot.registeredAt = null;
+  slot.demoSignature = false;
+  renderRegistrationSlots(kind);
+}
+
+function getRegistrationMessage(kind, label, timestamp) {
+  if (kind === 'schedule') {
+    const disbLabel = ((document.getElementById('disb-label') || {}).value || '').trim();
+    if (!disbLabel) throw new Error('Enter a disbursement label before registering wallets.');
+    return 'Register guardian for Cloak Treasury disbursement: ' + disbLabel + ' | role: ' + label + ' | timestamp: ' + timestamp;
+  }
+  const recip = ((document.getElementById('nvk-recip') || {}).value || '').trim() || 'Auditor';
+  const disbSelect = document.getElementById('nvk-disb');
+  const disbLabel = disbSelect ? (disbSelect.options[disbSelect.selectedIndex] || {}).text || 'selected disbursement' : 'selected disbursement';
+  return 'Register guardian for Cloak Treasury viewing key request: ' + disbLabel + ' | recipient: ' + recip + ' | role: ' + label + ' | timestamp: ' + timestamp;
+}
+
+async function connectAndSignGovernanceMessage(message, providerType, demoPrefix) {
+  const selectedProviderType = isSolanaWallet(providerType) ? providerType : 'phantom';
+  if (executionMode === 'demo') {
+    return {
+      providerType: selectedProviderType,
+      walletAddress: 'DEMO-' + walletLabel(selectedProviderType).toUpperCase() + '-' + demoPrefix + '-' + demoRegistrationSeq++,
+      signature: 'DEMO-SIGNATURE-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8),
+      demoSignature: true
+    };
+  }
+  const provider = getSolanaProvider(selectedProviderType);
+  if (!provider) throw new Error(walletLabel(selectedProviderType) + ' not found');
+  if (!provider.signMessage) throw new Error(walletLabel(selectedProviderType) + ' does not support message signing.');
+  try {
+    const connected = await connectGovernanceProvider(selectedProviderType);
+    const signed = await signConnectedGovernanceMessage(message, selectedProviderType);
+    return { providerType: selectedProviderType, walletAddress: connected.walletAddress, signature: signed.signature, demoSignature: false };
+  } catch(err) {
+    throw new Error(/reject|declin|cancel/i.test(err.message || '') ? 'Transaction rejected' : (err.message || 'Wallet signing failed'));
+  }
+}
+
+async function connectGovernanceProvider(providerType) {
+  const selectedProviderType = isSolanaWallet(providerType) ? providerType : 'phantom';
+  const provider = getSolanaProvider(selectedProviderType);
+  if (!provider) throw new Error(walletLabel(selectedProviderType) + ' not found');
+  const response = provider.connect ? await provider.connect() : {};
+  const walletAddress = String(readProviderPublicKey(provider, response) || '');
+  if (!walletAddress) throw new Error('No public key returned by wallet.');
+  return { providerType: selectedProviderType, walletAddress };
+}
+
+async function signConnectedGovernanceMessage(message, providerType) {
+  const selectedProviderType = isSolanaWallet(providerType) ? providerType : 'phantom';
+  const provider = getSolanaProvider(selectedProviderType);
+  if (!provider || !provider.signMessage) throw new Error(walletLabel(selectedProviderType) + ' does not support message signing.');
+  const result = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
+  const signature = bytesToHex(result?.signature || result);
+  if (!signature) throw new Error('Missing signature');
+  return { providerType: selectedProviderType, signature };
+}
+
+async function signGovernanceMessage(message, demoPrefix, providerType) {
+  return connectAndSignGovernanceMessage(message, providerType || activeWalletType, demoPrefix);
+}
+
+async function registerApprovalWallet(kind, label) {
+  const slots = syncRegistrationSlots(kind);
+  const slot = slots.find(item => item.label === label);
+  if (!slot) return;
+  try {
+    const timestamp = Date.now();
+    const signed = await signGovernanceMessage(getRegistrationMessage(kind, label, timestamp), label, slot.providerType || 'phantom');
+    const duplicate = slots.some(item => item.label !== label && normalizeWalletAddress(item.walletAddress) === normalizeWalletAddress(signed.walletAddress));
+    if (duplicate) { toast('Duplicate wallet', 'Each approval wallet can only be registered once.'); return; }
+    slot.walletAddress = signed.walletAddress;
+    slot.providerType = signed.providerType || slot.providerType || 'phantom';
+    slot.registrationSignature = signed.signature;
+    slot.registeredAt = timestamp;
+    slot.demoSignature = signed.demoSignature;
+    renderRegistrationSlots(kind);
+    toast('Wallet registered', label + ' · ' + shortAddress(slot.walletAddress));
+  } catch(err) {
+    toast(err.message === 'Transaction rejected' ? 'Transaction rejected' : 'Registration failed', err.message || 'Wallet did not sign registration.');
+  }
+}
+
+function getRegisteredApprovalConfig(kind) {
+  const isSchedule = kind === 'schedule';
+  const thresholdText = isSchedule
+    ? ((document.getElementById('gov-thresh') || {}).value || '2/3 multisig approval')
+    : (((document.getElementById('nvk-trigger') || {}).value === 'DAO approval') ? 'DAO majority vote' : ((document.getElementById('nvk-gov-thresh') || {}).value || '2/3 multisig approval'));
+  const type = governanceThresholdTypeFromText(thresholdText);
+  const slots = syncRegistrationSlots(kind);
+  const signed = slots.filter(slot => slot.walletAddress && slot.registrationSignature);
+  const addresses = new Set(signed.map(slot => normalizeWalletAddress(slot.walletAddress)));
+  if (signed.length !== slots.length) return { error: 'Register all approval wallets before continuing.' };
+  if (addresses.size !== signed.length) return { error: 'Duplicate approval wallets are not allowed.' };
+  const records = signed.map(slot => ({
+    label: slot.label,
+    providerType: slot.providerType || 'phantom',
+    walletAddress: slot.walletAddress,
+    registrationSignature: slot.registrationSignature,
+    registeredAt: slot.registeredAt,
+    demoSignature: !!slot.demoSignature
+  }));
+  if (type === 'dao60') {
+    const daoTotalMembers = records.length;
+    return {
+      governanceThreshold: 'DAO majority vote',
+      governanceThresholdType: 'dao60',
+      governanceType: 'dao',
+      governanceMode: 'dao',
+      daoTotalMembers,
+      requiredApprovals: Math.ceil(daoTotalMembers * 0.6),
+      guardians: [],
+      voters: records.map(record => record.label),
+      daoMembers: records
+    };
+  }
+  return {
+    governanceThreshold: type === '3of5' ? '3/5 guardian consensus' : '2/3 multisig approval',
+    governanceThresholdType: type,
+    governanceType: 'guardian',
+    governanceMode: type === '3of5' ? 'guardians' : 'multisig',
+    requiredApprovals: type === '3of5' ? 3 : 2,
+    guardians: records,
+    voters: undefined,
+    daoMembers: []
+  };
+}
+
 async function connectWallet() {
   if (activeWalletType === 'metamask') {
     const evmProvider = window.ethereum;
@@ -1287,6 +1586,7 @@ async function connectWallet() {
     saveStoredWallet();
     renderWalletSidebar();
     await refreshWalletBalance();
+    renderGovernancePanel();
     toast(walletLabel(activeWalletType) + ' connected', shortAddress(connectedWalletPublicKey) + ' - Devnet test tokens only');
   } catch(err) {
     toast('Wallet connection cancelled', err.message || walletLabel(activeWalletType) + ' did not connect.');
@@ -1322,6 +1622,7 @@ async function disconnectWallet() {
   connectedWalletNetwork = activeWalletType === 'metamask' ? 'evm' : 'devnet';
   saveStoredWallet();
   renderWalletSidebar();
+  renderGovernancePanel();
   toast('Wallet disconnected', walletLabel(activeWalletType) + ' cleared from this app.');
   return;
 
@@ -1347,6 +1648,7 @@ function registerWalletListeners() {
       connectedWalletNetwork = 'devnet';
       saveStoredWallet();
       refreshWalletBalance();
+      renderGovernancePanel();
     });
   });
   if (window.ethereum && window.ethereum.on) {
@@ -1357,6 +1659,7 @@ function registerWalletListeners() {
       devnetSolBalance = 0;
       saveStoredWallet();
       renderWalletSidebar();
+      renderGovernancePanel();
     });
   }
 }
@@ -1379,31 +1682,43 @@ function nkToRawString(nk) {
   return 'nkraw:' + Array.from(nk).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+function storedNkToBytes(value) {
+  const raw = String(value || '').trim();
+  if (!raw.startsWith('nkraw:')) return null;
+  const hex = raw.slice(6);
+  if (!hex || hex.length % 2 !== 0 || /[^0-9a-f]/i.test(hex)) return null;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
+}
+
 function generateDaoVoters(total) {
   const count = Math.max(1, parseInt(total, 10) || 50);
   return Array.from({ length: count }, (_, i) => 'DAO' + (i + 1));
 }
 
 function resolveGovernanceConfig(threshold, source) {
-  if (!threshold && source && ((Array.isArray(source.guardians) && source.guardians.length) || (Array.isArray(source.voters) && source.voters.length)) && source.requiredApprovals) {
-    const guardians = (Array.isArray(source.voters) && source.voters.length ? source.voters : source.guardians).slice();
-    const isDao = source.governanceType === 'dao' || source.governanceMode === 'dao' || source.releaseTrigger === 'dao' || guardians.some(g => String(g).startsWith('DAO'));
-    const daoTotalMembers = isDao ? (source.daoTotalMembers || guardians.length) : undefined;
-    const voters = isDao ? generateDaoVoters(daoTotalMembers) : guardians;
+  if (!threshold && source && ((Array.isArray(source.daoMembers) && source.daoMembers.length) || (Array.isArray(source.guardians) && source.guardians.length) || (Array.isArray(source.voters) && source.voters.length)) && source.requiredApprovals) {
+    const daoMembers = Array.isArray(source.daoMembers) ? source.daoMembers.slice() : [];
+    const guardians = Array.isArray(source.guardians) ? source.guardians.slice() : [];
+    const voters = Array.isArray(source.voters) ? source.voters.slice() : [];
+    const isDao = source.governanceType === 'dao' || source.governanceMode === 'dao' || source.releaseTrigger === 'dao' || daoMembers.length || voters.some(g => String(g).startsWith('DAO'));
+    const daoTotalMembers = isDao ? (source.daoTotalMembers || daoMembers.length || voters.length || guardians.length) : undefined;
     return {
       governanceThreshold: source.governanceThreshold || (isDao ? 'DAO majority vote' : source.requiredApprovals + '/' + guardians.length + ' guardian consensus'),
       governanceType: isDao ? 'dao' : 'guardian',
       governanceMode: source.governanceMode || (isDao ? 'dao' : 'guardians'),
       daoTotalMembers,
-      requiredApprovals: isDao ? Math.ceil(voters.length * 0.6) : source.requiredApprovals,
-      guardians: voters,
-      voters: isDao ? voters : undefined
+      requiredApprovals: isDao ? Math.ceil(daoTotalMembers * 0.6) : source.requiredApprovals,
+      guardians: isDao ? [] : guardians,
+      voters: isDao ? (voters.length ? voters : daoMembers.map(member => member.label)) : undefined,
+      daoMembers
     };
   }
   const label = threshold || (source && (source.governanceThresholdType || source.governanceThreshold || source.threshold)) || '2/3 multisig approval';
   const text = String(label);
   if (text.includes('DAO')) {
-    const daoTotalMembers = Math.max(1, parseInt((source && source.daoTotalMembers) || (source && source.totalDaoMembers) || 50, 10) || 50);
+    const daoTotalMembers = Math.min(50, Math.max(1, parseInt((source && source.daoTotalMembers) || (source && source.totalDaoMembers) || 50, 10) || 50));
     const voters = generateDaoVoters(daoTotalMembers);
     return {
       governanceThreshold: 'DAO majority vote',
@@ -1439,9 +1754,9 @@ function normalizeViewingKeyRecord(vk) {
   const linkedExecuted = d ? isDisbursementExecuted(d) : true;
   const isPrimaryDisbursementKey = String(vk.id) === 'disb-' + linkedDisbursementId || vk.recipient === 'Scheduled release';
   const triggerText = String(vk.trigger || '');
-  const releaseTrigger = vk.releaseTrigger || (triggerText === 'Custom date/time' ? 'custom_time' : (triggerText === 'DAO approval' || vk.governanceType === 'dao' || vk.governanceMode === 'dao' ? 'dao' : (triggerText === 'Governance approval' || triggerText === 'gov' || triggerText === 'governance' ? 'governance' : vk.trigger)));
+  const releaseTrigger = vk.releaseTrigger || (triggerText === 'Block height' || triggerText === 'block' ? 'block_height' : (triggerText === 'Custom date/time' ? 'custom_time' : (triggerText === 'DAO approval' || vk.governanceType === 'dao' || vk.governanceMode === 'dao' ? 'dao' : (triggerText === 'Governance approval' || triggerText === 'gov' || triggerText === 'governance' ? 'governance' : vk.trigger))));
   const govConfig = releaseTrigger === 'governance' || releaseTrigger === 'dao'
-    ? resolveGovernanceConfig(releaseTrigger === 'dao' ? 'DAO majority vote' : (vk.governanceThresholdType || vk.governanceThreshold || vk.threshold), { ...d, ...vk, releaseTrigger })
+    ? resolveGovernanceConfig(null, { ...d, ...vk, releaseTrigger })
     : { governanceThreshold: vk.governanceThreshold || '', governanceType: vk.governanceType || '', governanceMode: vk.governanceMode || '', daoTotalMembers: vk.daoTotalMembers || undefined, requiredApprovals: vk.requiredApprovals || 2, guardians: Array.isArray(vk.guardians) ? vk.guardians : ['G1', 'G2', 'G3'], voters: Array.isArray(vk.voters) ? vk.voters : undefined };
   return {
     id: vk.id || Date.now(),
@@ -1454,8 +1769,12 @@ function normalizeViewingKeyRecord(vk) {
     pendingNk: vk.pendingNk || '',
     pendingNkDisplay: vk.pendingNkDisplay || '',
     released: linkedExecuted && !!vk.released,
+    executed: linkedExecuted,
     pendingApproval: linkedExecuted && !!vk.pendingApproval && !vk.released,
     unlockTime: vk.unlockTime || (d ? d.unlockTime : null),
+    releaseBlockHeight: Number(vk.releaseBlockHeight ?? (d ? d.releaseBlockHeight : 0)) || null,
+    releaseMetric: vk.releaseMetric || (d ? d.releaseMetric : undefined) || solanaReleaseMetric,
+    currentBlockHeight: currentSolanaBlockHeight,
     executionTime: vk.executionTime || (d ? d.executionTime : null),
     executedAt: vk.executedAt || (d ? d.executedAt : null),
     awaitingExecution: !linkedExecuted || !!vk.awaitingExecution,
@@ -1471,14 +1790,15 @@ function normalizeViewingKeyRecord(vk) {
       ? (d && Array.isArray(d.transactions) ? d.transactions : undefined)
       : (Array.isArray(vk.transactions) ? vk.transactions : (d && Array.isArray(d.transactions) ? d.transactions : undefined)),
     transactionSummary: vk.transactionSummary || (d ? d.transactionSummary : undefined),
-    trigger: vk.trigger || releaseTrigger || 'Time delay',
+    trigger: vk.trigger || (releaseTrigger === 'block_height' ? 'Block height' : releaseTrigger) || 'Time delay',
     releaseTrigger,
     approvals: Array.isArray(vk.approvals) ? vk.approvals : [],
     requiredApprovals: govConfig.requiredApprovals,
-    guardians: govConfig.guardians,
-    voters: govConfig.voters,
+    guardians: Array.isArray(vk.guardians) ? vk.guardians : govConfig.guardians,
+    voters: Array.isArray(vk.voters) ? vk.voters : govConfig.voters,
+    daoMembers: Array.isArray(vk.daoMembers) ? vk.daoMembers : (Array.isArray(d?.daoMembers) ? d.daoMembers : (govConfig.daoMembers || [])),
     governanceThreshold: govConfig.governanceThreshold,
-    governanceThresholdType: vk.governanceThresholdType || govConfig.governanceThreshold,
+    governanceThresholdType: vk.governanceThresholdType || govConfig.governanceThresholdType || govConfig.governanceThreshold,
     governanceType: govConfig.governanceType,
     governanceMode: govConfig.governanceMode,
     daoTotalMembers: govConfig.daoTotalMembers,
@@ -1500,12 +1820,47 @@ function upsertViewingKeyRecord(record) {
   return normalized;
 }
 
+function getGovernanceActorRecords(item) {
+  if (!item) return [];
+  if (item.releaseTrigger === 'dao' || item.governanceType === 'dao' || item.governanceMode === 'dao') {
+    if (Array.isArray(item.daoMembers) && item.daoMembers.length) return item.daoMembers;
+    const labels = Array.isArray(item.voters) && item.voters.length ? item.voters : generateDaoVoters(item.daoTotalMembers || 0);
+    return labels.map(label => typeof label === 'object' ? label : { label, walletAddress: '', registrationSignature: '', registeredAt: null });
+  }
+  const guardians = Array.isArray(item.guardians) ? item.guardians : [];
+  return guardians.map(label => typeof label === 'object' ? label : { label, walletAddress: '', registrationSignature: '', registeredAt: null });
+}
+
+function getApprovalWalletAddress(approval) {
+  return typeof approval === 'object' ? normalizeWalletAddress(approval.walletAddress) : '';
+}
+
+function hasWalletVoted(item, walletAddress) {
+  const normalized = normalizeWalletAddress(walletAddress);
+  return (item.approvals || []).some(approval => getApprovalWalletAddress(approval) === normalized || normalizeWalletAddress(approval) === normalized);
+}
+
+function hasActorVoted(item, actor) {
+  const walletAddress = normalizeWalletAddress(actor?.walletAddress);
+  const label = String(actor?.label || '');
+  return (item.approvals || []).some(approval =>
+    (walletAddress && getApprovalWalletAddress(approval) === walletAddress) ||
+    (typeof approval === 'object' && String(approval.label || '') === label) ||
+    String(approval) === label
+  );
+}
+
+function getApprovalCount(item) {
+  return (item.approvals || []).length;
+}
+
 function reconcileViewingKeyReleases() {
   let changed = false;
   viewingKeys.forEach(vk => {
     const d = disbursements.find(item => item.id === vk.disbursementId);
     const isScheduledDisbursementKey = String(vk.id) === 'disb-' + vk.disbursementId || vk.recipient === 'Scheduled release';
     const isApprovalKey = vk.releaseTrigger === 'governance' || vk.releaseTrigger === 'dao';
+    const isBlockHeightKey = vk.releaseTrigger === 'block_height';
     const disbExecuted = d ? isDisbursementExecuted(d) : true;
     if (!disbExecuted) {
       if (vk.released) {
@@ -1523,7 +1878,13 @@ function reconcileViewingKeyReleases() {
       vk.awaitingExecution = false;
       changed = true;
     }
-    const unlocked = !isApprovalKey && (vk.releaseTrigger === 'immediate' || (vk.unlockTime && Date.now() >= vk.unlockTime));
+    vk.currentBlockHeight = currentSolanaBlockHeight;
+    if (isBlockHeightKey) vk.releaseMetric = solanaReleaseMetric;
+    const unlocked = !isApprovalKey && (
+      vk.releaseTrigger === 'immediate' ||
+      (isBlockHeightKey && isBlockHeightReleaseReached(vk)) ||
+      (!isBlockHeightKey && vk.unlockTime && Date.now() >= vk.unlockTime)
+    );
     const disbReleased = d && isDisbursementReleased(d) && (!isApprovalKey || isScheduledDisbursementKey);
     if (!vk.released && (unlocked || disbReleased)) {
       vk.released = true;
@@ -1554,12 +1915,21 @@ function selectGovernanceKey(id) {
   renderGovernancePanel();
 }
 
+function setGovernanceVoterProvider(providerType) {
+  governanceVoterProviderType = isSolanaWallet(providerType) ? providerType : 'phantom';
+  governanceVoterWalletAddress = '';
+  renderGovernancePanel();
+}
+
 function renderGovernancePanel() {
   const select = document.getElementById('gov-key-select');
   const grid = document.getElementById('guardian-grid');
+  const voterStatus = document.getElementById('voter-status');
+  const voterProvider = document.getElementById('gov-voter-provider');
   const label = document.getElementById('vote-label');
   const bar = document.getElementById('vote-bar');
   if (!select || !grid || !label || !bar) return;
+  if (voterProvider) voterProvider.value = governanceVoterProviderType;
 
   reconcileViewingKeyReleases();
   const govKeys = getGovernanceViewingKeys();
@@ -1579,6 +1949,7 @@ function renderGovernancePanel() {
   if (!selected) {
     if (summary) summary.textContent = 'No pending governance viewing keys.';
     grid.innerHTML = ['G1', 'G2', 'G3'].map(g => '<div class="g-item"><div class="g-av">' + g + '</div><div class="g-name">' + g + '</div><div class="g-status">Pending</div></div>').join('');
+    if (voterStatus) voterStatus.textContent = 'Voter provider: ' + walletLabel(governanceVoterProviderType) + ' | Connected voter wallet: none';
     label.textContent = '0 / 2 needed';
     bar.style.width = '0%';
     bar.style.background = 'var(--am)';
@@ -1586,7 +1957,8 @@ function renderGovernancePanel() {
   }
 
   const approvals = selected.approvals || [];
-  const actors = selected.releaseTrigger === 'dao' ? (selected.voters || selected.guardians || []) : (selected.guardians || []);
+  const actors = getGovernanceActorRecords(selected);
+  const authorized = governanceVoterWalletAddress && actors.some(actor => normalizeWalletAddress(actor.walletAddress) === normalizeWalletAddress(governanceVoterWalletAddress));
   const selectedType = String(selected.id) === 'disb-' + selected.disbursementId || selected.recipient === 'Scheduled release' ? 'Disbursement release' : 'Viewing key request';
   const selectedDisb = disbursements.find(item => item.id === selected.disbursementId);
   const awaitingSelectedExecution = selectedDisb && !isDisbursementExecuted(selectedDisb);
@@ -1597,9 +1969,12 @@ function renderGovernancePanel() {
       ? selected.disbursementLabel + ' is awaiting DAO approval. ' + (selected.daoTotalMembers || actors.length) + ' members · ' + selected.requiredApprovals + ' approvals required.'
       : selectedType + ': ' + selected.disbursementLabel + ' is awaiting governance. ' + selected.requiredApprovals + ' of ' + actors.length + ' votes required.';
   }
-  grid.innerHTML = actors.map(g => {
-    const approved = approvals.includes(g);
-    return '<div class="g-item ' + (approved ? 'approved' : '') + '"><div class="g-av">' + g + '</div><div class="g-name">' + g + '</div><div class="g-status">' + (approved ? 'Approved' : 'Pending') + '</div></div>';
+  if (voterStatus) {
+    voterStatus.textContent = 'Voter provider: ' + walletLabel(governanceVoterProviderType) + ' | Connected voter wallet: ' + (governanceVoterWalletAddress ? shortAddress(governanceVoterWalletAddress) : 'none') + ' | ' + (governanceVoterWalletAddress ? (authorized ? 'authorized' : 'not authorized') : 'connect to vote');
+  }
+  grid.innerHTML = actors.map(actor => {
+    const approved = hasActorVoted(selected, actor);
+    return '<div class="g-item ' + (approved ? 'approved' : '') + '"><div class="g-av">' + escapeHtml(actor.label) + '</div><div class="g-name">' + (actor.walletAddress ? shortAddress(actor.walletAddress) : escapeHtml(actor.label)) + '</div><div class="g-status">' + (actor.providerType ? walletLabel(actor.providerType) + ' | ' : '') + (approved ? 'signed vote' : (actor.registrationSignature ? 'registered' : 'unregistered')) + '</div></div>';
   }).join('');
   const done = approvals.length >= selected.requiredApprovals || selected.released;
   label.textContent = awaitingSelectedExecution ? 'Awaiting scheduled execution' : (done ? 'Unlocked \u2713' : approvals.length + ' / ' + selected.requiredApprovals + ' needed');
@@ -1643,6 +2018,7 @@ function selTrigger(t, el) {
   document.getElementById('tc-time').style.display  = t==='time'  ? '' : 'none';
   document.getElementById('tc-block').style.display = t==='block' ? '' : 'none';
   document.getElementById('tc-gov').style.display   = t==='gov'   ? '' : 'none';
+  if (t === 'block') fetchSolanaBlockHeight(true);
   toggleDaoControls();
   updateScore();
 }
@@ -1663,10 +2039,100 @@ function toggleDaoControls() {
   if (nvkGovRow) nvkGovRow.style.display = nvkTrigger && nvkTrigger.value === 'Governance approval' ? '' : 'none';
   if (nvkDaoRow) nvkDaoRow.style.display = nvkTrigger && nvkTrigger.value === 'DAO approval' ? '' : 'none';
   if (issueBtn) issueBtn.textContent = nvkTrigger && (nvkTrigger.value === 'Governance approval' || nvkTrigger.value === 'DAO approval') ? 'Submit key release request' : 'Generate viewing key';
+  syncRegistrationSlots('schedule');
+  syncRegistrationSlots('viewingkey');
   updateScore();
 }
 
 // ─── RECIPIENTS ───────────────────────────────────────────────────────────────
+function parseReleaseBlockHeightInput() {
+  const input = document.getElementById('block-inp');
+  const raw = input ? String(input.value || '').trim() : '';
+  const value = Number(raw);
+  if (!raw || !Number.isInteger(value) || value <= 0) return null;
+  return value;
+}
+
+function getBlockHeightReleaseConfig() {
+  const releaseBlockHeight = parseReleaseBlockHeightInput();
+  if (!releaseBlockHeight) return { error: 'Enter a valid block height' };
+  return {
+    delay: 0,
+    unlockTime: null,
+    releaseTrigger: 'block_height',
+    releaseBlockHeight,
+    releaseMetric: solanaReleaseMetric,
+    triggerLabel: 'Block height'
+  };
+}
+
+function getReleaseMetricLabel(metric) {
+  return metric === 'slot' ? 'slot' : 'block height';
+}
+
+function getCurrentReleaseMetricText() {
+  const label = getReleaseMetricLabel(solanaReleaseMetric);
+  return currentSolanaBlockHeight == null
+    ? 'Current ' + label + ': loading...'
+    : 'Current ' + label + ': ' + currentSolanaBlockHeight.toLocaleString();
+}
+
+function updateBlockHeightHint() {
+  const hint = document.getElementById('block-height-hint');
+  const labelEl = document.getElementById('block-release-label');
+  if (labelEl) labelEl.textContent = 'Release at ' + getReleaseMetricLabel(solanaReleaseMetric);
+  if (!hint) return;
+  if (solanaBlockHeightError) {
+    hint.innerHTML = escapeHtml(solanaBlockHeightError) + ' <button class="btn sm" style="margin-left:8px;padding:4px 7px;font-size:9px" onclick="fetchSolanaBlockHeight(true)">Retry</button>';
+    return;
+  }
+  hint.textContent = getCurrentReleaseMetricText();
+}
+
+async function fetchSolanaBlockHeight(force) {
+  const now = Date.now();
+  if (!force && now - lastBlockHeightFetchAt < 5000) return currentSolanaBlockHeight;
+  lastBlockHeightFetchAt = now;
+  try {
+    if (!window.SolanaConnection) throw new Error('Solana web3 unavailable');
+    const connection = new window.SolanaConnection(DEVNET_RPC_URL, 'confirmed');
+    currentSolanaBlockHeight = await connection.getBlockHeight('confirmed');
+    solanaReleaseMetric = 'blockHeight';
+    solanaBlockHeightError = '';
+    blockHeightErrorNotified = false;
+    updateBlockHeightHint();
+    return currentSolanaBlockHeight;
+  } catch(err) {
+    try {
+      if (!window.SolanaConnection) throw err;
+      const connection = new window.SolanaConnection(DEVNET_RPC_URL, 'confirmed');
+      currentSolanaBlockHeight = await connection.getSlot('confirmed');
+      solanaReleaseMetric = 'slot';
+      solanaBlockHeightError = '';
+      blockHeightErrorNotified = false;
+      updateBlockHeightHint();
+      return currentSolanaBlockHeight;
+    } catch(slotErr) {
+      console.warn('Unable to fetch Solana block height', err, slotErr);
+      solanaBlockHeightError = 'Unable to fetch Solana block height. Check RPC connection.';
+    }
+    if (!blockHeightErrorNotified) {
+      blockHeightErrorNotified = true;
+      toast('Unable to fetch Solana block height. Check RPC connection.', 'Block-height viewing keys remain locked until Devnet RPC responds.');
+    }
+    updateBlockHeightHint();
+    return null;
+  }
+}
+
+function isBlockHeightReleaseReached(d) {
+  return d && d.releaseTrigger === 'block_height' &&
+    (d.executed === true || isDisbursementExecuted(d)) &&
+    Number.isFinite(Number(d.releaseBlockHeight)) &&
+    currentSolanaBlockHeight != null &&
+    currentSolanaBlockHeight >= Number(d.releaseBlockHeight);
+}
+
 function addRecip() {
   recipients.push({ id: Date.now(), addr: '', amount: '' });
   renderRecips();
@@ -1721,18 +2187,18 @@ function updateSDKPreview() {
   const el = document.getElementById('sdk-preview-deposit');
   if (!el) return;
   const label  = (document.getElementById('disb-label') || {}).value || '\u2026';
-  const mint   = activeToken === 'USDC' ? 'USDC_MINT' : activeToken === 'USDT' ? 'USDT_MINT' : 'NATIVE_SOL_MINT';
+  const tokenConfig = getTokenConfig(activeToken);
+  const mint   = tokenConfig ? tokenConfig.mint : 'UNCONFIGURED_MINT';
   const total  = recipients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-  const amtStr = total > 0 ? total.toLocaleString() + (activeToken !== 'SOL' ? '_000_000n' : '_000_000_000n') : 'amount';
+  const amtStr = total > 0 ? total.toLocaleString() + ' ' + activeToken : 'amount';
   el.innerHTML =
     '<span class="cmt">// ' + (label || 'Disbursement') + ' \u2014 ' + recipients.length + ' recipient(s)</span>\n' +
+    '<span class="cmt">// mint: ' + mint + '</span>\n' +
     '<span class="fn">const</span> owner = await <span class="fn">generateUtxoKeypair</span>()\n' +
-    '<span class="fn">const</span> output = await <span class="fn">createUtxo</span>(\n' +
-    '  <span class="str">' + amtStr + '</span>, owner, <span class="param">' + mint + '</span>\n' +
-    ')\n' +
+    '<span class="fn">const</span> outputs = recipients.map(r =&gt; <span class="fn">createUtxo</span>(r.amountBaseUnits, owner, <span class="param">mint</span>))\n' +
     '<span class="fn">const</span> result = await <span class="fn">transact</span>({\n' +
-    '  inputUtxos:  [await <span class="fn">createZeroUtxo</span>(<span class="param">' + mint + '</span>)],\n' +
-    '  outputUtxos: [output],\n' +
+    '  inputUtxos:  [await <span class="fn">createZeroUtxo</span>(<span class="param">mint</span>)],\n' +
+    '  outputUtxos: [output], <span class="cmt">// one Cloak tx per recipient</span>\n' +
     '  externalAmount: <span class="str">' + amtStr + '</span>,\n' +
     '  depositor: <span class="param">signer.publicKey</span>,\n' +
     '}, { connection, programId: <span class="param">CLOAK_PROGRAM_ID</span>,\n' +
@@ -1853,6 +2319,12 @@ function getScheduleReleaseConfig(executionTime) {
   return { delay, unlockTime: releaseBase + delay * 1000, releaseTrigger: 'time', triggerLabel: 'Time delay' };
 }
 
+function getSelectedReleaseConfig(executionTime) {
+  if (selTrig === 'time') return getScheduleReleaseConfig(executionTime);
+  if (selTrig === 'block') return getBlockHeightReleaseConfig();
+  return null;
+}
+
 function isDisbursementExecuted(d) {
   if (!d) return false;
   if (d.executed === false) return false;
@@ -1868,6 +2340,7 @@ function isDisbursementReleased(d) {
   if (!isDisbursementExecuted(d)) return false;
   if (d.released) return true;
   if (d.releaseTrigger === 'immediate' || d.trigger === 'immediate') return true;
+  if (d.releaseTrigger === 'block_height') return isBlockHeightReleaseReached(d);
   if (d.trigger === 'time' || d.releaseTrigger === 'time' || d.releaseTrigger === 'custom_time') {
     const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
     return !!releaseAt && Date.now() >= releaseAt;
@@ -1908,6 +2381,7 @@ function displayNkForDisbursement(d) {
   }
   if (d.releaseTrigger === 'governance') return '[pending governance approval]';
   if (d.releaseTrigger === 'dao') return '[pending DAO approval]';
+  if (d.releaseTrigger === 'block_height') return '[locked until block height ' + Number(d.releaseBlockHeight).toLocaleString() + ']';
   if (d.releaseTrigger === 'custom_time') return '[locked until custom release time]';
   return '[locked until release]';
 }
@@ -1947,6 +2421,7 @@ function getViewingKeyStatusInfo(vk) {
   if (vk.released) return { label: 'Released', cls: 'revealed', detail: vk.releasedAt ? 'Released ' + new Date(vk.releasedAt).toLocaleString() : 'Released' };
   if (vk.releaseTrigger === 'dao') return { label: 'Pending DAO', cls: 'pending', detail: 'DAO approval pending' };
   if (vk.releaseTrigger === 'governance') return { label: 'Pending governance', cls: 'pending', detail: 'Governance approval pending' };
+  if (vk.releaseTrigger === 'block_height') return { label: 'Locked', cls: 'locked', detail: 'Until ' + getReleaseMetricLabel(vk.releaseMetric || solanaReleaseMetric) + ' ' + Number(vk.releaseBlockHeight || 0).toLocaleString() };
   if (vk.releaseTrigger === 'custom_time') return { label: 'Locked', cls: 'locked', detail: vk.unlockTime ? 'Custom release ' + new Date(vk.unlockTime).toLocaleString() : 'Custom release pending' };
   if (vk.releaseTrigger === 'time' || vk.unlockTime) return { label: 'Locked', cls: 'locked', detail: vk.unlockTime ? 'Releases ' + new Date(vk.unlockTime).toLocaleString() : 'Time-delay pending' };
   return { label: 'Locked', cls: 'locked', detail: 'Awaiting release' };
@@ -2066,8 +2541,10 @@ function renderStoredViewingKeys() {
     const awaitingExecution = d ? !isDisbursementExecuted(d) : !!vk.awaitingExecution;
     const isGovernancePending = (vk.releaseTrigger === 'governance' || vk.releaseTrigger === 'dao') && !released;
     const badgeText = released ? 'ACTIVE' : (awaitingExecution ? 'SCHEDULED' : (isGovernancePending ? 'GOV. PENDING' : 'LOCKED'));
-    const lockedText = awaitingExecution ? 'nk: [awaiting scheduled execution]' : (vk.releaseTrigger === 'dao' ? 'nk: [pending DAO approval]' : (isGovernancePending ? 'nk: [pending governance approval]' : (vk.releaseTrigger === 'custom_time' ? 'nk: [locked until custom release time]' : 'nk: [locked until release]')));
-    const lockedToast = awaitingExecution ? 'Awaiting scheduled execution' : (vk.releaseTrigger === 'dao' ? 'Viewing key releases when DAO approval reaches 60%' : (isGovernancePending ? 'Viewing key releases when governance approves' : (vk.releaseTrigger === 'custom_time' ? 'Viewing key releases at the selected local time' : 'Viewing key releases with its disbursement')));
+    const blockMetricLabel = getReleaseMetricLabel(vk.releaseMetric || d?.releaseMetric || solanaReleaseMetric);
+    const blockStatusText = 'nk: [locked until ' + blockMetricLabel + ' ' + Number(vk.releaseBlockHeight || d?.releaseBlockHeight || 0).toLocaleString() + ']';
+    const lockedText = awaitingExecution ? 'nk: [awaiting scheduled execution]' : (vk.releaseTrigger === 'dao' ? 'nk: [pending DAO approval]' : (isGovernancePending ? 'nk: [pending governance approval]' : (vk.releaseTrigger === 'block_height' ? blockStatusText : (vk.releaseTrigger === 'custom_time' ? 'nk: [locked until custom release time]' : 'nk: [locked until release]'))));
+    const lockedToast = awaitingExecution ? 'Awaiting scheduled execution' : (vk.releaseTrigger === 'dao' ? 'Viewing key releases when DAO approval reaches 60%' : (isGovernancePending ? 'Viewing key releases when governance approves' : (vk.releaseTrigger === 'block_height' ? 'Locked until ' + blockMetricLabel + ' ' + Number(vk.releaseBlockHeight || d?.releaseBlockHeight || 0).toLocaleString() + '. Current ' + blockMetricLabel + ': ' + (currentSolanaBlockHeight == null ? 'loading...' : currentSolanaBlockHeight.toLocaleString()) : (vk.releaseTrigger === 'custom_time' ? 'Viewing key releases at the selected local time' : 'Viewing key releases with its disbursement'))));
     if (released && !vk.released) {
       vk.released = true;
       vk.releasedAt = Date.now();
@@ -2092,6 +2569,95 @@ function roundMoney(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+function getTokenConfig(token) {
+  const config = TOKEN_CONFIGS[token || activeToken];
+  if (!config || !config.mint) return null;
+  return config;
+}
+
+function parseTokenAmountToBaseUnits(value, decimals) {
+  const raw = String(value || '').trim();
+  if (!raw || !/^\d+(\.\d+)?$/.test(raw)) return null;
+  const parts = raw.split('.');
+  const whole = parts[0] || '0';
+  const fraction = parts[1] || '';
+  if (fraction.length > decimals) return null;
+  const base = BigInt(10) ** BigInt(decimals);
+  const wholeUnits = BigInt(whole) * base;
+  const fractionUnits = BigInt((fraction + '0'.repeat(decimals)).slice(0, decimals) || '0');
+  const amount = wholeUnits + fractionUnits;
+  return amount > 0n ? amount : null;
+}
+
+function isValidSolanaAddress(value) {
+  try {
+    if (!value || !window.SolanaPublicKey) return false;
+    new window.SolanaPublicKey(String(value).trim());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getValidatedRecipientSnapshot(token) {
+  const tokenConfig = getTokenConfig(token);
+  if (!tokenConfig) return { error: 'Devnet mint not configured for this token.' };
+  if (!recipients.length) return { error: 'Add at least one recipient.' };
+  const recipientSnapshot = [];
+  let totalBaseUnits = 0n;
+  let totalAmount = 0;
+  for (const r of recipients) {
+    const addr = String(r.addr || '').trim();
+    if (!isValidSolanaAddress(addr)) return { error: 'Invalid recipient wallet address.' };
+    const amountBaseUnits = parseTokenAmountToBaseUnits(r.amount, tokenConfig.decimals);
+    if (!amountBaseUnits) return { error: 'Enter a valid amount.' };
+    const displayAmount = Number(r.amount);
+    if (!Number.isFinite(displayAmount) || displayAmount <= 0) return { error: 'Enter a valid amount.' };
+    totalBaseUnits += amountBaseUnits;
+    totalAmount = roundMoney(totalAmount + displayAmount);
+    recipientSnapshot.push({
+      addr,
+      recipient: addr,
+      amount: displayAmount,
+      amountText: String(r.amount).trim(),
+      amountBaseUnits: amountBaseUnits.toString(),
+      token: tokenConfig.symbol,
+      mint: tokenConfig.mint,
+      decimals: tokenConfig.decimals
+    });
+  }
+  return { recipientSnapshot, totalAmount, totalBaseUnits, tokenConfig };
+}
+
+function shortMint(mint) {
+  if (!mint) return 'unconfigured';
+  return String(mint).slice(0, 8) + '...' + String(mint).slice(-4);
+}
+
+function getDisbursementBatchConfig(d) {
+  const tokenConfig = getTokenConfig(d?.token);
+  if (!tokenConfig) return { error: 'Devnet mint not configured for this token.' };
+  const recipientSnapshot = (d?.recipients || []).map((row, index) => {
+    const addr = row.addr || row.recipient || 'recipient-' + (index + 1);
+    const amountBaseUnits = row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString();
+    return {
+      ...row,
+      addr,
+      recipient: addr,
+      token: row.token || tokenConfig.symbol,
+      mint: row.mint || tokenConfig.mint,
+      decimals: row.decimals ?? tokenConfig.decimals,
+      amountBaseUnits
+    };
+  });
+  if (recipientSnapshot.some(row => !isValidSolanaAddress(row.addr))) return { error: 'Invalid recipient wallet address.' };
+  if (recipientSnapshot.some(row => !row.amountBaseUnits || BigInt(row.amountBaseUnits) <= 0n)) return { error: 'Enter a valid amount.' };
+  const totalBaseUnits = d?.totalBaseUnits
+    ? BigInt(d.totalBaseUnits)
+    : recipientSnapshot.reduce((sum, row) => sum + BigInt(row.amountBaseUnits || '0'), 0n);
+  return { recipientSnapshot, totalAmount: Number(d?.amount || 0), totalBaseUnits, tokenConfig };
+}
+
 function normalizeScopeLabel(scope) {
   const raw = String(scope || 'Full audit trail').split('(')[0].trim();
   if (/amounts only/i.test(raw)) return 'Amounts only';
@@ -2100,22 +2666,27 @@ function normalizeScopeLabel(scope) {
   return 'Full audit trail';
 }
 
-function createStoredTransactions(recipientRows, signature, timestamp, commitment, token) {
+function createStoredTransactions(recipientRows, signature, timestamp, commitment, token, mint) {
   const rows = (recipientRows || []).map((recipient, index) => ({
     recipient: recipient.recipient || recipient.addr || 'recipient-' + (index + 1),
     gross: roundMoney(recipient.gross ?? recipient.amount),
-    token: recipient.token || token || activeToken
+    fee: recipient.fee,
+    net: recipient.net,
+    token: recipient.token || token || activeToken,
+    mint: recipient.mint || mint || (getTokenConfig(recipient.token || token || activeToken) || {}).mint || '',
+    amountBaseUnits: recipient.amountBaseUnits || '',
+    signature: recipient.signature,
+    commitment: recipient.commitment
   }));
   const totalGross = roundMoney(rows.reduce((sum, row) => sum + row.gross, 0));
-  const totalFeeTarget = rows.length ? roundMoney(totalGross * VARIABLE_FEE + 5) : 0;
-  const fixedShare = rows.length ? 5 / rows.length : 0;
+  const totalFeeTarget = rows.length ? roundMoney(totalGross * VARIABLE_FEE) : 0;
   let feeSoFar = 0;
   let runningNet = 0;
   return rows.map((row, index) => {
     const isLast = index === rows.length - 1;
-    const fee = isLast ? roundMoney(totalFeeTarget - feeSoFar) : roundMoney(row.gross * VARIABLE_FEE + fixedShare);
+    const fee = row.fee !== undefined ? roundMoney(row.fee) : (isLast ? roundMoney(totalFeeTarget - feeSoFar) : roundMoney(row.gross * VARIABLE_FEE));
     feeSoFar = roundMoney(feeSoFar + fee);
-    const net = roundMoney(row.gross - fee);
+    const net = row.net !== undefined ? roundMoney(row.net) : roundMoney(row.gross - fee);
     runningNet = roundMoney(runningNet + net);
     return {
       txType: 'send',
@@ -2125,9 +2696,11 @@ function createStoredTransactions(recipientRows, signature, timestamp, commitmen
       runningBalance: runningNet,
       recipient: row.recipient,
       timestamp,
-      signature: signature || 'pending',
-      commitment: commitment || 'shielded',
-      token: row.token
+      signature: row.signature || signature || 'pending',
+      commitment: row.commitment || commitment || 'shielded',
+      token: row.token,
+      mint: row.mint,
+      amountBaseUnits: row.amountBaseUnits
     };
   });
 }
@@ -2171,30 +2744,35 @@ function buildReportFromDisbursement(d) {
   };
 }
 
-function getScheduleDraft(label, total, executionConfig, releaseConfig, isDemoRun) {
-  const recipientSnapshot = recipients.map((r, i) => ({
+function getScheduleDraft(label, total, executionConfig, releaseConfig, isDemoRun, batchConfig) {
+  const recipientSnapshot = batchConfig?.recipientSnapshot || recipients.map((r, i) => ({
     addr: r.addr || 'recipient-' + (i + 1),
     amount: parseFloat(r.amount) || 0,
-    token: activeToken
+    token: activeToken,
+    mint: (getTokenConfig(activeToken) || {}).mint || ''
   }));
   const govThreshold = (document.getElementById('gov-thresh') || {}).value || '2/3 multisig approval';
-  const daoTotalMembers = parseInt((document.getElementById('dao-total-members') || {}).value || '50', 10) || 50;
-  const govConfig = resolveGovernanceConfig(govThreshold, { daoTotalMembers });
+  const daoTotalMembers = clampDaoMemberInput('dao-total-members');
+  const govConfig = selTrig === 'gov' ? getRegisteredApprovalConfig('schedule') : resolveGovernanceConfig(govThreshold, { daoTotalMembers });
   const selectedVisibilityScope = normalizeScopeLabel((vkConfigs[0] || {}).scope || (document.getElementById('vk-scope') || {}).value || 'Full audit trail');
   const releaseTrigger = selTrig === 'gov'
     ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance')
-    : (selTrig === 'time' ? releaseConfig.releaseTrigger : selTrig);
+    : (selTrig === 'time' || selTrig === 'block' ? releaseConfig.releaseTrigger : selTrig);
   const triggerLabel = selTrig === 'time'
     ? releaseConfig.triggerLabel
-    : (selTrig === 'gov' ? (releaseTrigger === 'dao' ? 'DAO approval' : 'Governance approval') : selTrig);
+    : (selTrig === 'block' ? 'Block height' : (selTrig === 'gov' ? (releaseTrigger === 'dao' ? 'DAO approval' : 'Governance approval') : selTrig));
   return {
     recipientSnapshot,
+    tokenConfig: batchConfig?.tokenConfig || getTokenConfig(activeToken),
+    totalBaseUnits: batchConfig?.totalBaseUnits ? batchConfig.totalBaseUnits.toString() : '',
     govConfig,
     selectedVisibilityScope,
     releaseTrigger,
     triggerLabel,
     delay: releaseConfig ? (releaseConfig.delay || 0) : 0,
     unlockTime: selTrig === 'time' && releaseConfig ? releaseConfig.unlockTime : null,
+    releaseBlockHeight: selTrig === 'block' && releaseConfig ? releaseConfig.releaseBlockHeight : null,
+    releaseMetric: selTrig === 'block' && releaseConfig ? (releaseConfig.releaseMetric || solanaReleaseMetric) : undefined,
     executionTime: executionConfig.executionTime,
     isDemoRun
   };
@@ -2205,6 +2783,8 @@ function resetScheduleForm(labelEl) {
   renderRecips();
   if (labelEl) labelEl.value = '';
   vkConfigs = [];
+  govRegistrationSlots = [];
+  renderRegistrationSlots('schedule');
   renderVKConfigs();
   updateSDKPreview();
 }
@@ -2218,15 +2798,18 @@ function updateDisbursementCounters() {
   renderOverview();
 }
 
-function createScheduledDisbursementRecord(label, total, executionConfig, releaseConfig, isDemoRun) {
-  const draft = getScheduleDraft(label, total, executionConfig, releaseConfig || { delay: 0, unlockTime: null, releaseTrigger: selTrig, triggerLabel: selTrig }, isDemoRun);
+function createScheduledDisbursementRecord(label, total, executionConfig, releaseConfig, isDemoRun, batchConfig) {
+  const draft = getScheduleDraft(label, total, executionConfig, releaseConfig || { delay: 0, unlockTime: null, releaseTrigger: selTrig, triggerLabel: selTrig }, isDemoRun, batchConfig);
   const createdAt = Date.now();
-  const transactionRows = createStoredTransactions(draft.recipientSnapshot, 'scheduled', draft.executionTime, 'pending', activeToken);
+  const transactionRows = createStoredTransactions(draft.recipientSnapshot, 'scheduled', draft.executionTime, 'pending', activeToken, draft.tokenConfig?.mint);
   const transactionSummary = summarizeTransactions(transactionRows);
   const newD = {
     id: nextId++,
     label,
     token: activeToken,
+    mint: draft.tokenConfig?.mint || '',
+    tokenDecimals: draft.tokenConfig?.decimals,
+    totalBaseUnits: draft.totalBaseUnits,
     amount: total,
     recips: recipients.length,
     recipients: draft.recipientSnapshot,
@@ -2244,6 +2827,9 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     executed: false,
     executedAt: null,
     unlockTime: draft.unlockTime,
+    releaseBlockHeight: draft.releaseBlockHeight,
+    releaseMetric: draft.releaseMetric,
+    currentBlockHeight: currentSolanaBlockHeight,
     txSignature: null,
     walletPublicKey: connectedWalletPublicKey || '',
     walletType: activeWalletType,
@@ -2254,12 +2840,14 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     released: false,
     pendingApproval: false,
     awaitingExecution: true,
+    type: 'disbursement',
     approvals: selTrig === 'gov' ? [] : undefined,
     requiredApprovals: selTrig === 'gov' ? draft.govConfig.requiredApprovals : undefined,
     guardians: selTrig === 'gov' ? draft.govConfig.guardians : undefined,
     voters: selTrig === 'gov' ? draft.govConfig.voters : undefined,
+    daoMembers: selTrig === 'gov' ? draft.govConfig.daoMembers : undefined,
     governanceThreshold: selTrig === 'gov' ? draft.govConfig.governanceThreshold : undefined,
-    governanceThresholdType: selTrig === 'gov' ? draft.govConfig.governanceThreshold : undefined,
+    governanceThresholdType: selTrig === 'gov' ? draft.govConfig.governanceThresholdType : undefined,
     governanceType: selTrig === 'gov' ? draft.govConfig.governanceType : undefined,
     governanceMode: selTrig === 'gov' ? draft.govConfig.governanceMode : undefined,
     daoTotalMembers: selTrig === 'gov' ? draft.govConfig.daoTotalMembers : undefined
@@ -2278,7 +2866,14 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     executionTime: newD.executionTime,
     executedAt: null,
     unlockTime: newD.unlockTime,
+    releaseBlockHeight: newD.releaseBlockHeight,
+    releaseMetric: newD.releaseMetric,
+    currentBlockHeight: currentSolanaBlockHeight,
     amount: newD.amount,
+    mint: newD.mint,
+    token: newD.token,
+    tokenDecimals: newD.tokenDecimals,
+    totalBaseUnits: newD.totalBaseUnits,
     recipients: newD.recips,
     transactions: newD.transactions,
     transactionSummary: newD.transactionSummary,
@@ -2294,12 +2889,14 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     visibilityScope: draft.selectedVisibilityScope,
     trigger: draft.triggerLabel,
     releaseTrigger: draft.releaseTrigger,
+    type: 'disbursement',
     approvals: selTrig === 'gov' ? [] : undefined,
     requiredApprovals: selTrig === 'gov' ? draft.govConfig.requiredApprovals : undefined,
     guardians: selTrig === 'gov' ? draft.govConfig.guardians : undefined,
     voters: selTrig === 'gov' ? draft.govConfig.voters : undefined,
+    daoMembers: selTrig === 'gov' ? draft.govConfig.daoMembers : undefined,
     governanceThreshold: selTrig === 'gov' ? draft.govConfig.governanceThreshold : undefined,
-    governanceThresholdType: selTrig === 'gov' ? draft.govConfig.governanceThreshold : undefined,
+    governanceThresholdType: selTrig === 'gov' ? draft.govConfig.governanceThresholdType : undefined,
     governanceType: selTrig === 'gov' ? draft.govConfig.governanceType : undefined,
     governanceMode: selTrig === 'gov' ? draft.govConfig.governanceMode : undefined,
     daoTotalMembers: selTrig === 'gov' ? draft.govConfig.daoTotalMembers : undefined
@@ -2309,49 +2906,70 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
   return newD;
 }
 
-async function validateLiveExecutionPreconditions(walletType, walletPublicKey) {
+async function validateLiveExecutionPreconditions(walletType, walletPublicKey, batchConfig) {
   if (walletType === 'metamask') return { head: 'Cloak transactions require a Solana wallet', body: 'Switch to Phantom, Solflare, Backpack, or Glow.' };
   const liveProvider = getSolanaProvider(walletType);
   if (!walletPublicKey) return { head: 'Connect wallet first', body: 'Connect a Solana wallet on Devnet before executing a live disbursement.' };
   if (!liveProvider) return { head: walletLabel(walletType) + ' not found', body: 'Open or install the selected Solana wallet.' };
-  if (activeWalletType === walletType && connectedWalletPublicKey === walletPublicKey) {
-    await refreshWalletBalance();
-    if (devnetSolBalance <= 0) return { head: 'Wallet has no devnet SOL for fees', body: 'Switch to Demo Mode or fund this wallet on devnet.' };
-    return null;
-  }
-  if (window.SolanaConnection && window.SolanaPublicKey) {
-    try {
-      const connection = new window.SolanaConnection(DEVNET_RPC_URL, 'confirmed');
-      const lamports = await connection.getBalance(new window.SolanaPublicKey(walletPublicKey));
-      if (lamports <= 0) return { head: 'Wallet has no devnet SOL for fees', body: 'Switch to Demo Mode or fund this wallet on devnet.' };
+  if (!window.SolanaConnection || !window.SolanaPublicKey) return null;
+  try {
+    const connection = new window.SolanaConnection(DEVNET_RPC_URL, 'confirmed');
+    const owner = new window.SolanaPublicKey(walletPublicKey);
+    const lamports = BigInt(await connection.getBalance(owner));
+    const recipientsCount = Math.max(1, (batchConfig?.recipientSnapshot || []).length);
+    const feeReserve = ESTIMATED_SOL_FEE_LAMPORTS * BigInt(recipientsCount);
+    if (!batchConfig) {
+      if (lamports <= 0n) return { head: 'Insufficient SOL balance.', body: 'Fund this Devnet wallet before executing.' };
       return null;
-    } catch(err) {
-      return { head: 'Wallet has no devnet SOL for fees', body: 'Unable to verify this wallet balance on devnet.' };
     }
+    const tokenConfig = batchConfig.tokenConfig;
+    if (!tokenConfig || !tokenConfig.mint) return { head: 'Devnet mint not configured for this token.', body: 'Choose a token with a configured Devnet mint.' };
+    if (tokenConfig.symbol === 'SOL') {
+      if (lamports < batchConfig.totalBaseUnits + feeReserve) return { head: 'Insufficient SOL balance.', body: 'Fund this Devnet wallet before executing.' };
+      return null;
+    }
+    if (lamports < feeReserve) return { head: 'Insufficient SOL balance.', body: 'Fund this Devnet wallet for transaction fees.' };
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, { mint: new window.SolanaPublicKey(tokenConfig.mint) });
+    const tokenBalance = (tokenAccounts.value || []).reduce((sum, account) => {
+      const amount = account?.account?.data?.parsed?.info?.tokenAmount?.amount || '0';
+      return sum + BigInt(amount);
+    }, 0n);
+    if (tokenBalance < batchConfig.totalBaseUnits) return { head: 'Insufficient token balance.', body: 'Fund the associated token account before executing.' };
+    return null;
+  } catch(err) {
+    if (err && /invalid/i.test(err.message || '')) return { head: 'Connect wallet first', body: 'Connected wallet address could not be verified.' };
+    if (batchConfig && batchConfig.tokenConfig && batchConfig.tokenConfig.symbol !== 'SOL') {
+      return { head: 'Insufficient token balance.', body: 'Unable to verify this token balance on Devnet.' };
+    }
+    return { head: 'Insufficient SOL balance.', body: 'Unable to verify this wallet balance on Devnet.' };
   }
-  return null;
 }
 
 async function executeDisbursementTransaction(detail) {
   const token = detail.token || activeToken;
   const total = detail.total || 0;
-  const recipientSnapshot = detail.recipientSnapshot || [];
+  const tokenConfig = detail.tokenConfig || getTokenConfig(token);
+  if (!tokenConfig) throw new Error('Devnet mint not configured for this token.');
+  const recipientSnapshot = (detail.recipientSnapshot || []).map((row, index) => ({
+    ...row,
+    recipient: row.recipient || row.addr || 'recipient-' + (index + 1),
+    addr: row.addr || row.recipient || 'recipient-' + (index + 1),
+    token: row.token || tokenConfig.symbol,
+    mint: row.mint || tokenConfig.mint,
+    decimals: row.decimals ?? tokenConfig.decimals,
+    amountBaseUnits: row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString()
+  }));
+  if (!recipientSnapshot.length) throw new Error('Add at least one recipient.');
   const isDemoRun = !!detail.isDemoRun;
   const walletType = detail.walletType || activeWalletType;
   const depositorPublicKey = detail.walletPublicKey || connectedWalletPublicKey || (isDemoRun ? 'demo-wallet-public-key' : null);
   const btn = detail.button || null;
 
-  const owner = await sdk_generateUtxoKeypair();
+  const owner = await sdk_generateUtxoKeypair({ demoMode: isDemoRun });
   addDashLog('gr', '<strong>generateUtxoKeypair()</strong> \u2014 UTXO owner keypair derived<span class="sdk-tag">SDK</span>');
-  const nk = sdk_getNkFromUtxoPrivateKey(owner.privateKey);
+  const nk = sdk_getNkFromUtxoPrivateKey(owner.privateKey, { demoMode: isDemoRun });
   const nkDisplay = sdk_nkToDisplayString(nk);
   addDashLog('am', '<strong>getNkFromUtxoPrivateKey()</strong> \u2014 viewing key derived and locked until release<span class="sdk-tag">SDK</span>');
-
-  const mint = token === 'USDC' ? USDC_MINT : token === 'USDT' ? USDT_MINT : NATIVE_SOL_MINT;
-  const amountLamports = BigInt(Math.round(total * 1_000_000));
-  const zeroUtxo = await sdk_createZeroUtxo(mint);
-  const outputUtxo = await sdk_createUtxo(amountLamports, owner, mint);
-  addDashLog('gr', '<strong>createZeroUtxo() + createUtxo()</strong> \u2014 UTXO pair built \u00b7 ' + total.toLocaleString() + ' ' + token + '<span class="sdk-tag">SDK</span>');
 
   const signingProvider = getSolanaProvider(walletType);
   const walletAdapter = !isDemoRun && signingProvider ? {
@@ -2369,20 +2987,46 @@ async function executeDisbursementTransaction(detail) {
     console.log('Waiting for wallet approval');
   }
 
-  const result = await sdk_transact(
-    { inputUtxos: [zeroUtxo], outputUtxos: [outputUtxo], externalAmount: amountLamports, depositor: depositorPublicKey || 'treasury-fallback' },
-    { connection: 'devnet-connection', programId: CLOAK_PROGRAM_ID, depositorKeypair: null, wallet: walletAdapter, walletPublicKey: depositorPublicKey, walletType: walletLabel(walletType), chainNoteViewingKeyNk: nk, recipients: recipientSnapshot, releaseTrigger: detail.releaseTrigger, demoMode: isDemoRun }
-  );
-  addDashLog(isDemoRun ? 'am' : 'gr', '<strong>' + (isDemoRun ? 'DEMO MODE simulated transact()' : 'transact()') + '</strong> \u2014 ' + (isDemoRun ? 'fake tx signature generated' : 'Groth16 proof verified') + ' \u00b7 leafIndex: ' + result.leafIndex + ' \u00b7 sig: ' + result.signature.slice(0,16) + '\u2026<span class="sdk-tag">' + (isDemoRun ? 'DEMO' : 'SDK') + '</span>');
-
+  const results = [];
+  const outputUtxos = [];
+  for (const [index, recipient] of recipientSnapshot.entries()) {
+    if (!recipient.amountBaseUnits) throw new Error('Enter a valid amount.');
+    const amountBaseUnits = BigInt(recipient.amountBaseUnits);
+    const zeroUtxo = await sdk_createZeroUtxo(tokenConfig.mint, { demoMode: isDemoRun });
+    const outputUtxo = await sdk_createUtxo(amountBaseUnits, owner, tokenConfig.mint, { demoMode: isDemoRun });
+    outputUtxos.push(outputUtxo);
+    addDashLog('gr', '<strong>createZeroUtxo() + createUtxo()</strong> \u2014 recipient ' + (index + 1) + '/' + recipientSnapshot.length + ' \u00b7 ' + Number(recipient.amount || 0).toLocaleString() + ' ' + tokenConfig.symbol + ' \u00b7 mint ' + shortMint(tokenConfig.mint) + '<span class="sdk-tag">SDK</span>');
+    const result = await sdk_transact(
+      { inputUtxos: [zeroUtxo], outputUtxos: [outputUtxo], externalAmount: amountBaseUnits, depositor: depositorPublicKey || 'treasury-fallback' },
+      { connection: 'devnet-connection', programId: CLOAK_PROGRAM_ID, depositorKeypair: null, wallet: walletAdapter, walletPublicKey: depositorPublicKey, walletType: walletLabel(walletType), chainNoteViewingKeyNk: nk, recipients: [recipient], releaseTrigger: detail.releaseTrigger, mint: tokenConfig.mint, demoMode: isDemoRun }
+    );
+    results.push(result);
+    recipient.signature = result.signature;
+    recipient.commitment = result.commitment || outputUtxo.commitment;
+    addDashLog(isDemoRun ? 'am' : 'gr', '<strong>' + (isDemoRun ? 'DEMO MODE simulated transact()' : 'transact()') + '</strong> \u2014 recipient ' + (index + 1) + '/' + recipientSnapshot.length + ' \u00b7 ' + (isDemoRun ? 'demo tx signature' : 'Groth16 proof verified') + ' \u00b7 mint ' + shortMint(tokenConfig.mint) + ' \u00b7 sig: ' + String(result.signature || '').slice(0,16) + '\u2026<span class="sdk-tag">' + (isDemoRun ? 'DEMO' : 'SDK') + '</span>');
+  }
+  const result = results[0] || {};
+  const signatures = results.map(r => r.signature).filter(Boolean);
+  const commitments = recipientSnapshot.map(r => r.commitment).filter(Boolean);
   const finalNk = result.nk ? Uint8Array.from(result.nk) : nk;
+  const executedAt = Date.now();
+  const transactionRows = createStoredTransactions(recipientSnapshot, null, executedAt, null, tokenConfig.symbol, tokenConfig.mint);
   return {
+    results,
     result,
     finalNk,
     finalNkDisplay: result.nkDisplay || nkDisplay,
-    outputUtxo,
+    outputUtxo: outputUtxos[0],
+    outputUtxos,
     depositorPublicKey,
-    executedAt: Date.now()
+    executedAt,
+    transactionRows,
+    transactionSummary: summarizeTransactions(transactionRows),
+    signatures,
+    commitments,
+    mint: tokenConfig.mint,
+    tokenDecimals: tokenConfig.decimals,
+    totalBaseUnits: detail.totalBaseUnits ? detail.totalBaseUnits.toString() : recipientSnapshot.reduce((sum, row) => sum + BigInt(row.amountBaseUnits || '0'), 0n).toString()
   };
 }
 
@@ -2394,21 +3038,33 @@ function applyExecutedDisbursementResult(d, executionResult) {
   d.executionError = '';
   d.executed = true;
   d.executedAt = executedAt;
-  d.txSignature = result.signature;
+  d.txSignature = result.signature || (executionResult.signatures || []).join(',');
+  d.txSignatures = executionResult.signatures || (d.txSignature ? [d.txSignature] : []);
   d.walletPublicKey = result.walletPublicKey || executionResult.depositorPublicKey || d.walletPublicKey || '';
   d.demoTx = d.executionMode === 'demo';
   d.leafIndex = result.leafIndex;
-  d.commitment = result.commitment || executionResult.outputUtxo.commitment;
+  d.commitment = result.commitment || executionResult.commitments?.[0] || executionResult.outputUtxo?.commitment;
+  d.commitments = executionResult.commitments || (d.commitment ? [d.commitment] : []);
+  d.mint = executionResult.mint || d.mint || (getTokenConfig(d.token) || {}).mint || '';
+  d.tokenDecimals = executionResult.tokenDecimals ?? d.tokenDecimals ?? (getTokenConfig(d.token) || {}).decimals;
+  d.totalBaseUnits = executionResult.totalBaseUnits || d.totalBaseUnits || '';
   d.nk = nkToRawString(executionResult.finalNk);
   d.nkDisplay = executionResult.finalNkDisplay;
-  d.transactions = createStoredTransactions(d.recipients || [], result.signature, executedAt, d.commitment, d.token);
-  d.transactionSummary = summarizeTransactions(d.transactions);
+  d.transactions = executionResult.transactionRows || createStoredTransactions(d.recipients || [], d.txSignature, executedAt, d.commitment, d.token, d.mint);
+  d.transactionSummary = executionResult.transactionSummary || summarizeTransactions(d.transactions);
 
   if (d.releaseTrigger === 'immediate' || d.trigger === 'immediate') {
     d.released = true;
     d.releasedAt = executedAt;
     d.unlockTime = d.unlockTime || executedAt;
     d.status = 'released';
+  } else if (d.releaseTrigger === 'block_height') {
+    d.currentBlockHeight = currentSolanaBlockHeight;
+    d.releaseMetric = solanaReleaseMetric;
+    d.released = isBlockHeightReleaseReached(d);
+    d.pendingApproval = false;
+    d.status = d.released ? 'released' : 'awaiting_release';
+    if (d.released) d.releasedAt = Date.now();
   } else if (d.releaseTrigger === 'governance' || d.releaseTrigger === 'dao') {
     d.released = false;
     d.pendingApproval = true;
@@ -2431,11 +3087,19 @@ function applyExecutedDisbursementResult(d, executionResult) {
     executionTime: d.executionTime,
     executedAt: d.executedAt,
     unlockTime: d.unlockTime,
+    releaseBlockHeight: d.releaseBlockHeight,
+    releaseMetric: d.releaseMetric,
+    currentBlockHeight: currentSolanaBlockHeight,
     amount: d.amount,
     recipients: d.recips,
     transactions: d.transactions,
     transactionSummary: d.transactionSummary,
     txSignature: d.txSignature,
+    txSignatures: d.txSignatures,
+    mint: d.mint,
+    token: d.token,
+    tokenDecimals: d.tokenDecimals,
+    totalBaseUnits: d.totalBaseUnits,
     walletPublicKey: d.walletPublicKey,
     walletType: d.walletType,
     walletNetwork: d.walletNetwork,
@@ -2445,12 +3109,14 @@ function applyExecutedDisbursementResult(d, executionResult) {
     recipient: 'Scheduled release',
     scope: d.scope,
     visibilityScope: d.visibilityScope,
-    trigger: d.trigger === 'time' ? (d.releaseTrigger === 'custom_time' ? 'Custom date/time' : 'Time delay') : (d.releaseTrigger === 'dao' ? 'DAO approval' : (d.releaseTrigger === 'governance' ? 'Governance approval' : d.trigger)),
+    trigger: d.trigger === 'time' ? (d.releaseTrigger === 'custom_time' ? 'Custom date/time' : 'Time delay') : (d.releaseTrigger === 'block_height' ? 'Block height' : (d.releaseTrigger === 'dao' ? 'DAO approval' : (d.releaseTrigger === 'governance' ? 'Governance approval' : d.trigger))),
     releaseTrigger: d.releaseTrigger,
+    type: 'disbursement',
     approvals: d.approvals || [],
     requiredApprovals: d.requiredApprovals,
     guardians: d.guardians,
     voters: d.voters,
+    daoMembers: d.daoMembers,
     governanceThreshold: d.governanceThreshold,
     governanceThresholdType: d.governanceThresholdType,
     governanceType: d.governanceType,
@@ -2463,8 +3129,17 @@ function applyExecutedDisbursementResult(d, executionResult) {
 async function executeScheduledDisbursement(d) {
   if (!d || d.executing || d.status !== 'scheduled' || !d.executionTime || Date.now() < d.executionTime) return false;
   const isDemoRun = d.executionMode === 'demo' || d.demoTx;
+  const batchConfig = getDisbursementBatchConfig(d);
+  if (batchConfig.error) {
+    d.executionError = batchConfig.error;
+    d.executionErrorAt = Date.now();
+    saveStoredDisbursements();
+    renderDisbCards();
+    toast(batchConfig.error, batchConfig.error);
+    return false;
+  }
   if (!isDemoRun) {
-    const liveError = await validateLiveExecutionPreconditions(d.walletType || activeWalletType, d.walletPublicKey || connectedWalletPublicKey);
+    const liveError = await validateLiveExecutionPreconditions(d.walletType || activeWalletType, d.walletPublicKey || connectedWalletPublicKey, batchConfig);
     if (liveError) {
       d.executionError = liveError.head;
       d.executionErrorAt = Date.now();
@@ -2485,7 +3160,9 @@ async function executeScheduledDisbursement(d) {
       label: d.label,
       total: d.amount,
       token: d.token,
-      recipientSnapshot: d.recipients || [],
+      tokenConfig: batchConfig.tokenConfig,
+      recipientSnapshot: batchConfig.recipientSnapshot,
+      totalBaseUnits: batchConfig.totalBaseUnits,
       releaseTrigger: d.releaseTrigger,
       isDemoRun,
       walletType: d.walletType || activeWalletType,
@@ -2500,12 +3177,14 @@ async function executeScheduledDisbursement(d) {
     return true;
   } catch(err) {
     d.executing = false;
-    d.executionError = err.message || 'Execution failed';
+    const rejected = err && /reject|declin|cancel/i.test(err.message || '');
+    const insufficient = err && /insufficient (devnet )?(sol|token)/i.test(err.message || '');
+    const liveFailure = !isDemoRun && !rejected && !insufficient;
+    d.executionError = rejected ? 'Transaction rejected' : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed' : (err.message || 'Execution failed')));
     saveStoredDisbursements();
     renderDisbCards();
-    const rejected = err && /reject|declin|cancel/i.test(err.message || '');
-    toast(rejected ? (isDemoRun ? 'Demo cancelled' : 'Transaction rejected') : 'Scheduled execution failed',
-      rejected ? 'No disbursement transaction was saved.' : (err.message || 'Try again when the wallet is ready.'));
+    toast(rejected ? (isDemoRun ? 'Demo cancelled' : 'Transaction rejected') : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed. Switch to Demo Mode to simulate.' : 'Scheduled execution failed')),
+      rejected ? 'No disbursement transaction was saved.' : (insufficient ? 'Fund this wallet on Devnet or switch to Demo Mode.' : (liveFailure ? 'No disbursement transaction was saved.' : (err.message || 'Try again when the wallet is ready.'))));
     return false;
   }
 }
@@ -2524,12 +3203,30 @@ async function processScheduledDisbursements() {
   }
 }
 
-function releaseDueDisbursementsAndKeys() {
+async function releaseDueDisbursementsAndKeys() {
   let changed = false;
   const now = Date.now();
+  if (disbursements.some(d => isDisbursementExecuted(d) && !d.released && d.releaseTrigger === 'block_height')) {
+    const previousBlockHeight = currentSolanaBlockHeight;
+    const previousMetric = solanaReleaseMetric;
+    await fetchSolanaBlockHeight(false);
+    if (previousBlockHeight !== currentSolanaBlockHeight || previousMetric !== solanaReleaseMetric) changed = true;
+  }
   disbursements.forEach(d => {
     if (!isDisbursementExecuted(d) || d.released) return;
     const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
+    if (d.releaseTrigger === 'block_height') {
+      d.currentBlockHeight = currentSolanaBlockHeight;
+      d.releaseMetric = solanaReleaseMetric;
+      if (isBlockHeightReleaseReached(d)) {
+        d.released = true;
+        d.releasedAt = now;
+        d.status = 'released';
+        registerReleasedViewingKey(d);
+        changed = true;
+      }
+      return;
+    }
     const canRelease = d.releaseTrigger === 'immediate' || d.trigger === 'immediate' ||
       ((d.trigger === 'time' || d.releaseTrigger === 'time' || d.releaseTrigger === 'custom_time') && releaseAt && now >= releaseAt);
     if (canRelease) {
@@ -2552,37 +3249,44 @@ function releaseDueDisbursementsAndKeys() {
 }
 
 async function appSchedulerTick() {
+  if (selTrig === 'block' || solanaBlockHeightError) await fetchSolanaBlockHeight(false);
   await processScheduledDisbursements();
-  releaseDueDisbursementsAndKeys();
+  await releaseDueDisbursementsAndKeys();
 }
 
 // ─── SUBMIT DISBURSEMENT ──────────────────────────────────────────────────────
 async function submitDisb() {
   const labelEl = document.getElementById('disb-label');
   const label   = labelEl ? labelEl.value.trim() : '';
-  const total   = recipients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
 
   if (!label)             { toast('Missing label',  'Give this disbursement a name.'); return; }
   if (!recipients.length) { toast('No recipients',  'Add at least one recipient.'); return; }
-  if (total === 0)        { toast('No amounts',      'Set amounts for recipients.'); return; }
+  const batchConfig = getValidatedRecipientSnapshot(activeToken);
+  if (batchConfig.error)  { toast(batchConfig.error, batchConfig.error); return; }
+  const total = batchConfig.totalAmount;
   if (activeWalletType === 'metamask') { toast('Cloak transactions require a Solana wallet', 'Switch to Phantom, Solflare, Backpack, or Glow.'); return; }
   const executionConfig = getExecutionScheduleConfig();
   if (executionConfig.error) {
     toast('Invalid execution time', executionConfig.error);
     return;
   }
-  const preflightRelease = selTrig === 'time' ? getScheduleReleaseConfig(executionConfig.executionTime) : null;
+  const preflightRelease = getSelectedReleaseConfig(executionConfig.executionTime);
   if (preflightRelease && preflightRelease.error) {
-    toast('Invalid release time', preflightRelease.error);
+    toast(preflightRelease.error === 'Enter a valid block height' ? 'Enter a valid block height' : 'Invalid release time', preflightRelease.error);
     return;
   }
+  if (selTrig === 'gov') {
+    const approvalConfig = getRegisteredApprovalConfig('schedule');
+    if (approvalConfig.error) { toast('Approval wallets required', approvalConfig.error); return; }
+  }
+  if (selTrig === 'block') await fetchSolanaBlockHeight(true);
   const isDemoRun = executionMode === 'demo';
   if (executionConfig.isScheduled) {
     if (!isDemoRun) {
-      const liveError = await validateLiveExecutionPreconditions(activeWalletType, connectedWalletPublicKey);
+      const liveError = await validateLiveExecutionPreconditions(activeWalletType, connectedWalletPublicKey, batchConfig);
       if (liveError) { toast(liveError.head, liveError.body); return; }
     }
-    const scheduled = createScheduledDisbursementRecord(label, total, executionConfig, preflightRelease, isDemoRun);
+    const scheduled = createScheduledDisbursementRecord(label, total, executionConfig, preflightRelease, isDemoRun, batchConfig);
     resetScheduleForm(labelEl);
     toast('Disbursement scheduled', scheduled.label + ' executes ' + new Date(scheduled.executionTime).toLocaleString() + ' \u00b7 viewing key waits for execution');
     setTimeout(() => {
@@ -2594,7 +3298,7 @@ async function submitDisb() {
     return;
   }
   if (!isDemoRun) {
-    const liveError = await validateLiveExecutionPreconditions(activeWalletType, connectedWalletPublicKey);
+    const liveError = await validateLiveExecutionPreconditions(activeWalletType, connectedWalletPublicKey, batchConfig);
     if (liveError) { toast(liveError.head, liveError.body); return; }
   }
 
@@ -2604,70 +3308,46 @@ async function submitDisb() {
   btn.textContent = 'Generating Groth16 proof\u2026';
 
   try {
-    // STEP 1: generateUtxoKeypair()
-    const owner = await sdk_generateUtxoKeypair();
-    addDashLog('gr', '<strong>generateUtxoKeypair()</strong> \u2014 UTXO owner keypair derived<span class="sdk-tag">SDK</span>');
-
-    // STEP 2: getNkFromUtxoPrivateKey() — viewing key, client-side only
-    const nk = sdk_getNkFromUtxoPrivateKey(owner.privateKey);
-    const nkDisplay = sdk_nkToDisplayString(nk);
-    addDashLog('am', '<strong>getNkFromUtxoPrivateKey()</strong> \u2014 viewing key derived and locked until release<span class="sdk-tag">SDK</span>');
-
-    // STEP 3: createZeroUtxo() + createUtxo()
-    const mint = activeToken === 'USDC' ? USDC_MINT : activeToken === 'USDT' ? USDT_MINT : NATIVE_SOL_MINT;
-    const amountLamports = BigInt(Math.round(total * 1_000_000));
-    const zeroUtxo   = await sdk_createZeroUtxo(mint);
-    const outputUtxo = await sdk_createUtxo(amountLamports, owner, mint);
-    addDashLog('gr', '<strong>createZeroUtxo() + createUtxo()</strong> \u2014 UTXO pair built \u00b7 ' + total.toLocaleString() + ' ' + activeToken + '<span class="sdk-tag">SDK</span>');
-    const recipientSnapshot = recipients.map((r, i) => ({
-      addr: r.addr || 'recipient-' + (i + 1),
-      amount: parseFloat(r.amount) || 0,
-      token: activeToken
-    }));
-
-    // STEP 4: transact() — Groth16 proof + relay
-    const depositorPublicKey = connectedWalletPublicKey || (isDemoRun ? 'demo-wallet-public-key' : null);
-    const signingProvider = getActiveSolanaProvider();
-    const walletAdapter = !isDemoRun && signingProvider ? {
-      publicKey: window.SolanaPublicKey ? new window.SolanaPublicKey(depositorPublicKey) : depositorPublicKey,
-      signTransaction: signingProvider.signTransaction ? signingProvider.signTransaction.bind(signingProvider) : null,
-      signMessage: signingProvider.signMessage ? signingProvider.signMessage.bind(signingProvider) : null
-    } : null;
-    if (isDemoRun) {
-      btn.textContent = 'Waiting for demo approval...';
-      const approved = await requestDemoApproval({ label, total, token: activeToken, recipients: recipientSnapshot.length });
-      if (!approved) throw new Error('Demo transaction cancelled');
-      addDashLog('am', '<strong>DEMO MODE</strong> \u2014 simulated wallet approval accepted<span class="sdk-tag">DEMO</span>');
-    } else {
-      btn.textContent = 'Waiting for wallet approval...';
-      console.log('Waiting for wallet approval');
-    }
-    const result = await sdk_transact(
-      { inputUtxos: [zeroUtxo], outputUtxos: [outputUtxo], externalAmount: amountLamports, depositor: depositorPublicKey || 'treasury-fallback' },
-      { connection: 'devnet-connection', programId: CLOAK_PROGRAM_ID, depositorKeypair: null, wallet: walletAdapter, walletPublicKey: depositorPublicKey, walletType: walletLabel(activeWalletType), chainNoteViewingKeyNk: nk, recipients: recipientSnapshot, releaseTrigger: selTrig, demoMode: isDemoRun }
-    );
-    addDashLog(isDemoRun ? 'am' : 'gr', '<strong>' + (isDemoRun ? 'DEMO MODE simulated transact()' : 'transact()') + '</strong> \u2014 ' + (isDemoRun ? 'fake tx signature generated' : 'Groth16 proof verified') + ' \u00b7 leafIndex: ' + result.leafIndex + ' \u00b7 sig: ' + result.signature.slice(0,16) + '\u2026<span class="sdk-tag">' + (isDemoRun ? 'DEMO' : 'SDK') + '</span>');
-    const finalNk = result.nk ? Uint8Array.from(result.nk) : nk;
-    const finalNkDisplay = result.nkDisplay || nkDisplay;
+    const executionResult = await executeDisbursementTransaction({
+      label,
+      total,
+      token: activeToken,
+      tokenConfig: batchConfig.tokenConfig,
+      recipientSnapshot: batchConfig.recipientSnapshot,
+      totalBaseUnits: batchConfig.totalBaseUnits,
+      releaseTrigger: selTrig,
+      isDemoRun,
+      walletType: activeWalletType,
+      walletPublicKey: connectedWalletPublicKey,
+      button: btn
+    });
+    const result = executionResult.result;
+    const recipientSnapshot = batchConfig.recipientSnapshot;
+    const depositorPublicKey = executionResult.depositorPublicKey;
+    const finalNk = executionResult.finalNk;
+    const finalNkDisplay = executionResult.finalNkDisplay;
 
     const createdAt = Date.now();
-    const executedAt = createdAt;
+    const executedAt = executionResult.executedAt || createdAt;
     const scheduleRelease = selTrig === 'time'
       ? { ...preflightRelease, delay: Math.max(0, Math.ceil((preflightRelease.unlockTime - executionConfig.executionTime) / 1000)) }
-      : { delay: 0, unlockTime: null, releaseTrigger: selTrig, triggerLabel: selTrig };
+      : (selTrig === 'block' ? preflightRelease : { delay: 0, unlockTime: null, releaseTrigger: selTrig, triggerLabel: selTrig });
     const delay = scheduleRelease.delay || 0;
     const govThreshold = (document.getElementById('gov-thresh') || {}).value || '2/3 multisig approval';
-    const daoTotalMembers = parseInt((document.getElementById('dao-total-members') || {}).value || '50', 10) || 50;
-    const govConfig = resolveGovernanceConfig(govThreshold, { daoTotalMembers });
+    const daoTotalMembers = clampDaoMemberInput('dao-total-members');
+    const govConfig = selTrig === 'gov' ? getRegisteredApprovalConfig('schedule') : resolveGovernanceConfig(govThreshold, { daoTotalMembers });
     const selectedVisibilityScope = normalizeScopeLabel((vkConfigs[0] || {}).scope || (document.getElementById('vk-scope') || {}).value || 'Full audit trail');
-    const releaseTrigger = selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : (selTrig === 'time' ? scheduleRelease.releaseTrigger : selTrig);
-    const releasedNow = releaseTrigger === 'immediate';
-    const transactionRows = createStoredTransactions(recipientSnapshot, result.signature, executedAt, result.commitment || outputUtxo.commitment, activeToken);
-    const transactionSummary = summarizeTransactions(transactionRows);
+    const releaseTrigger = selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : (selTrig === 'time' || selTrig === 'block' ? scheduleRelease.releaseTrigger : selTrig);
+    const releasedNow = releaseTrigger === 'immediate' || (releaseTrigger === 'block_height' && isBlockHeightReleaseReached({ ...scheduleRelease, executed: true }));
+    const transactionRows = executionResult.transactionRows || createStoredTransactions(recipientSnapshot, result.signature, executedAt, result.commitment, activeToken, batchConfig.tokenConfig.mint);
+    const transactionSummary = executionResult.transactionSummary || summarizeTransactions(transactionRows);
     const newD = {
       id: nextId++,
       label,
       token: activeToken,
+      mint: executionResult.mint || batchConfig.tokenConfig.mint,
+      tokenDecimals: executionResult.tokenDecimals ?? batchConfig.tokenConfig.decimals,
+      totalBaseUnits: executionResult.totalBaseUnits || batchConfig.totalBaseUnits.toString(),
       amount: total,
       recips: recipients.length,
       recipients: recipientSnapshot,
@@ -2675,7 +3355,7 @@ async function submitDisb() {
       transactionSummary,
       scope: selectedVisibilityScope,
       visibilityScope: selectedVisibilityScope,
-      status: releasedNow ? 'released' : (releaseTrigger === 'time' || releaseTrigger === 'custom_time' || releaseTrigger === 'governance' || releaseTrigger === 'dao' ? 'awaiting_release' : 'executed'),
+      status: releasedNow ? 'released' : (releaseTrigger === 'time' || releaseTrigger === 'custom_time' || releaseTrigger === 'block_height' || releaseTrigger === 'governance' || releaseTrigger === 'dao' ? 'awaiting_release' : 'executed'),
       trigger: selTrig,
       releaseTrigger,
       delay,
@@ -2685,23 +3365,30 @@ async function submitDisb() {
       executed: true,
       executedAt,
       unlockTime: selTrig === 'time' ? scheduleRelease.unlockTime : null,
-      txSignature: result.signature,
+      releaseBlockHeight: selTrig === 'block' ? scheduleRelease.releaseBlockHeight : null,
+      releaseMetric: selTrig === 'block' ? (scheduleRelease.releaseMetric || solanaReleaseMetric) : undefined,
+      currentBlockHeight: currentSolanaBlockHeight,
+      txSignature: result.signature || (executionResult.signatures || []).join(','),
+      txSignatures: executionResult.signatures || [],
       walletPublicKey: result.walletPublicKey || depositorPublicKey || '',
       walletType: activeWalletType,
       walletNetwork: connectedWalletNetwork,
       executionMode: isDemoRun ? 'demo' : 'live',
       demoTx: isDemoRun,
       leafIndex: result.leafIndex,
-      commitment: result.commitment || outputUtxo.commitment,
+      commitment: result.commitment || executionResult.commitments?.[0] || executionResult.outputUtxo?.commitment,
+      commitments: executionResult.commitments || [],
       nkDisplay: finalNkDisplay,
       released: releasedNow,
       pendingApproval: !releasedNow && selTrig === 'gov',
+      type: 'disbursement',
       approvals: selTrig === 'gov' ? [] : undefined,
       requiredApprovals: selTrig === 'gov' ? govConfig.requiredApprovals : undefined,
       guardians: selTrig === 'gov' ? govConfig.guardians : undefined,
       voters: selTrig === 'gov' ? govConfig.voters : undefined,
+      daoMembers: selTrig === 'gov' ? govConfig.daoMembers : undefined,
       governanceThreshold: selTrig === 'gov' ? govConfig.governanceThreshold : undefined,
-      governanceThresholdType: selTrig === 'gov' ? govConfig.governanceThreshold : undefined,
+      governanceThresholdType: selTrig === 'gov' ? govConfig.governanceThresholdType : undefined,
       governanceType: selTrig === 'gov' ? govConfig.governanceType : undefined,
       governanceMode: selTrig === 'gov' ? govConfig.governanceMode : undefined,
       daoTotalMembers: selTrig === 'gov' ? govConfig.daoTotalMembers : undefined
@@ -2720,11 +3407,19 @@ async function submitDisb() {
       executionTime: newD.executionTime,
       executedAt: newD.executedAt,
       unlockTime: newD.unlockTime,
+      releaseBlockHeight: newD.releaseBlockHeight,
+      releaseMetric: newD.releaseMetric,
+      currentBlockHeight: currentSolanaBlockHeight,
       amount: newD.amount,
       recipients: newD.recips,
       transactions: newD.transactions,
       transactionSummary: newD.transactionSummary,
       txSignature: newD.txSignature,
+      txSignatures: newD.txSignatures,
+      token: newD.token,
+      mint: newD.mint,
+      tokenDecimals: newD.tokenDecimals,
+      totalBaseUnits: newD.totalBaseUnits,
       walletPublicKey: newD.walletPublicKey,
       walletType: newD.walletType,
       walletNetwork: newD.walletNetwork,
@@ -2734,14 +3429,16 @@ async function submitDisb() {
       recipient: 'Scheduled release',
       scope: selectedVisibilityScope,
       visibilityScope: selectedVisibilityScope,
-      trigger: selTrig === 'time' ? scheduleRelease.triggerLabel : (selTrig === 'gov' ? 'Governance approval' : selTrig),
-      releaseTrigger: selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : (selTrig === 'time' ? scheduleRelease.releaseTrigger : selTrig),
+      trigger: selTrig === 'time' ? scheduleRelease.triggerLabel : (selTrig === 'block' ? 'Block height' : (selTrig === 'gov' ? 'Governance approval' : selTrig)),
+      releaseTrigger: selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : (selTrig === 'time' || selTrig === 'block' ? scheduleRelease.releaseTrigger : selTrig),
+      type: 'disbursement',
       approvals: selTrig === 'gov' ? [] : undefined,
       requiredApprovals: selTrig === 'gov' ? govConfig.requiredApprovals : undefined,
       guardians: selTrig === 'gov' ? govConfig.guardians : undefined,
       voters: selTrig === 'gov' ? govConfig.voters : undefined,
+      daoMembers: selTrig === 'gov' ? govConfig.daoMembers : undefined,
       governanceThreshold: selTrig === 'gov' ? govConfig.governanceThreshold : undefined,
-      governanceThresholdType: selTrig === 'gov' ? govConfig.governanceThreshold : undefined,
+      governanceThresholdType: selTrig === 'gov' ? govConfig.governanceThresholdType : undefined,
       governanceType: selTrig === 'gov' ? govConfig.governanceType : undefined,
       governanceMode: selTrig === 'gov' ? govConfig.governanceMode : undefined,
       daoTotalMembers: selTrig === 'gov' ? govConfig.daoTotalMembers : undefined
@@ -2766,9 +3463,10 @@ async function submitDisb() {
 
   } catch(err) {
     const rejected = err && /reject|declin|cancel/i.test(err.message || '');
-    const liveHint = executionMode === 'live' && !rejected ? ' Switch to Demo Mode to simulate while devnet SOL is unavailable.' : '';
-    toast(rejected ? (executionMode === 'demo' ? 'Demo cancelled' : 'Transaction rejected') : 'Error',
-      rejected ? (executionMode === 'demo' ? 'No simulated transaction was saved.' : 'Transaction rejected') : ((err.message || 'Something went wrong') + liveHint));
+    const insufficient = err && /insufficient (devnet )?(sol|token)/i.test(err.message || '');
+    const liveFailure = executionMode === 'live' && !rejected && !insufficient;
+    toast(rejected ? (executionMode === 'demo' ? 'Demo cancelled' : 'Transaction rejected') : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed. Switch to Demo Mode to simulate.' : 'Error')),
+      rejected ? (executionMode === 'demo' ? 'No simulated transaction was saved.' : 'Transaction rejected') : (insufficient ? 'Fund this wallet on Devnet or switch to Demo Mode.' : (liveFailure ? 'No disbursement transaction was saved.' : (err.message || 'Something went wrong'))));
     console.error(err);
   } finally {
     btn.disabled = false;
@@ -2790,6 +3488,8 @@ function renderDisbCards() {
   disbursements.forEach(d => {
     const releaseAt = d.unlockTime || ((d.executionTime || d.executedAt) ? (d.executionTime || d.executedAt) + (d.delay || 0) * 1000 : null);
     const remSec   = d.trigger === 'time' ? Math.max(0, Math.ceil((releaseAt - Date.now()) / 1000)) : null;
+    const blockMetricLabel = getReleaseMetricLabel(d.releaseMetric || solanaReleaseMetric);
+    const blockHeightText = currentSolanaBlockHeight == null ? 'loading...' : currentSolanaBlockHeight.toLocaleString();
     const executed = isDisbursementExecuted(d);
     const execRemSec = !executed && d.executionTime ? Math.max(0, Math.ceil((d.executionTime - Date.now()) / 1000)) : null;
     const released = isDisbursementReleased(d);
@@ -2798,6 +3498,7 @@ function renderDisbCards() {
     const feeUSD   = (d.transactionSummary || summarizeTransactions(getStoredTransactionsForDisbursement(d))).totalFees.toFixed(2);
     const statusLabel = !executed ? (d.executing ? 'Executing' : 'Scheduled') : (released ? 'Released' : (d.status === 'executed' ? 'Executed' : 'Awaiting release'));
     const statusClass = released ? 'revealed' : (!executed ? 'pending' : 'active');
+    const mintDisplay = d.mint || (getTokenConfig(d.token) || {}).mint || '';
     const demoBadge = d.demoTx || d.executionMode === 'demo'
       ? '<span class="badge pending" style="margin-left:6px">DEMO MODE \u2014 simulated tx</span>'
       : '';
@@ -2820,6 +3521,8 @@ function renderDisbCards() {
             ? '<div class="cdown" id="exec-cd-' + d.id + '">' + fmtTime(execRemSec || 0) + '</div><div class="cdown-lbl">' + (d.executionError ? d.executionError : 'until scheduled execution') + '</div>'
             : d.trigger === 'time' && !released
             ? '<div class="cdown" id="cd-' + d.id + '">' + fmtTime(remSec) + '</div><div class="cdown-lbl">until viewing key releases</div>'
+            : d.releaseTrigger === 'block_height' && !released
+            ? '<div class="cdown" style="font-size:20px;color:var(--am)">' + Number(d.releaseBlockHeight || 0).toLocaleString() + '</div><div class="cdown-lbl">Locked until ' + blockMetricLabel + ' ' + Number(d.releaseBlockHeight || 0).toLocaleString() + '<br>Current ' + blockMetricLabel + ': ' + blockHeightText + '</div>'
             : d.trigger === 'gov' && !released
               ? '<div class="cdown" style="font-size:20px;color:var(--am)">' + (d.releaseTrigger === 'dao' || d.governanceType === 'dao' ? 'DAO vote' : 'Gov. vote') + '</div><div class="cdown-lbl">' + (d.releaseTrigger === 'dao' || d.governanceType === 'dao' ? 'awaiting 60% DAO approval' : 'awaiting guardian consensus') + '</div>'
               : released
@@ -2827,8 +3530,10 @@ function renderDisbCards() {
                 : '<div class="cdown" style="font-size:20px;color:var(--am)">Executed</div><div class="cdown-lbl">awaiting release</div>') +
           '<div class="div" style="margin:10px 0"></div>' +
           '<div class="fs10 tx3 mono" style="line-height:1.9">' +
-            'Trigger: ' + (d.releaseTrigger === 'custom_time' ? 'Custom date/time' : (d.trigger === 'time' ? 'Time delay' : d.trigger === 'gov' ? 'Governance vote' : 'Block height')) + '<br>' +
+            'Trigger: ' + (d.releaseTrigger === 'custom_time' ? 'Custom date/time' : (d.releaseTrigger === 'block_height' ? 'Block height' : (d.trigger === 'time' ? 'Time delay' : d.trigger === 'gov' ? 'Governance vote' : 'Block height'))) + '<br>' +
+            (d.releaseTrigger === 'block_height' ? 'Locked until ' + blockMetricLabel + ' ' + Number(d.releaseBlockHeight || 0).toLocaleString() + '<br>Current ' + blockMetricLabel + ': ' + blockHeightText + '<br>' : '') +
             'Program: <span style="color:var(--tx2)">' + CLOAK_PROGRAM_ID.slice(0,12) + '\u2026</span><br>' +
+            'Mint: <span style="color:var(--tx2)">' + shortMint(mintDisplay) + '</span><br>' +
             'nk: <span id="nk-' + d.id + '" style="color:var(--am)">' + nkLineText + '</span>' +
           '</div>' +
         '</div>' +
@@ -2839,7 +3544,7 @@ function renderDisbCards() {
               ? '<div class="log-item"><div class="log-t">queued</div><div class="log-dot bl"></div><div class="log-msg"><strong>Scheduled</strong> \u2014 execution waits until ' + new Date(d.executionTime || d.created).toLocaleString() + '</div></div>' +
                 '<div class="log-item"><div class="log-t">pending</div><div class="log-dot am"></div><div class="log-msg"><strong>Awaiting scheduled execution</strong> \u2014 no tx signature or nk created yet</div></div>'
               : '<div class="log-item"><div class="log-t">T+0s</div><div class="log-dot gr"></div><div class="log-msg"><strong>generateUtxoKeypair()</strong><span class="sdk-tag">SDK</span></div></div>' +
-            '<div class="log-item"><div class="log-t">T+0.1s</div><div class="log-dot gr"></div><div class="log-msg"><strong>createZeroUtxo() + createUtxo()</strong><span class="sdk-tag">SDK</span></div></div>' +
+            '<div class="log-item"><div class="log-t">T+0.1s</div><div class="log-dot gr"></div><div class="log-msg"><strong>createZeroUtxo() + createUtxo()</strong> \u2014 mint ' + shortMint(mintDisplay) + ' \u00b7 ' + (d.recips || 0) + ' output' + (d.recips !== 1 ? 's' : '') + '<span class="sdk-tag">SDK</span></div></div>' +
             '<div class="log-item"><div class="log-t">T+0.3s</div><div class="log-dot ' + (d.demoTx || d.executionMode === 'demo' ? 'am' : 'gr') + '"></div><div class="log-msg"><strong>' + (d.demoTx || d.executionMode === 'demo' ? 'DEMO MODE simulated transact()' : 'transact()') + '</strong> \u2014 ' + (d.demoTx || d.executionMode === 'demo' ? 'fake tx signature: ' + String(d.txSignature || '').slice(0,16) + '\u2026' : 'Groth16 proof generated') + '<span class="sdk-tag">' + (d.demoTx || d.executionMode === 'demo' ? 'DEMO' : 'SDK') + '</span></div></div>' +
             '<div class="log-item"><div class="log-t">T+1.2s</div><div class="log-dot am"></div><div class="log-msg"><strong>getNkFromUtxoPrivateKey()</strong> \u2014 viewing key nk derived<span class="sdk-tag">SDK</span></div></div>' +
             '<div class="log-item"><div class="log-t">T+1.4s</div><div class="log-dot ' + (released ? 'gr' : 'bl') + '"></div><div class="log-msg">' + (released ? '<strong>VK released</strong> \u2014 scanTransactions() ready' : '<strong>VK locked</strong> \u2014 awaiting trigger') + '</div></div>') +
@@ -2928,9 +3633,9 @@ async function issueVK() {
   if (!attachedDisb) { toast('No disbursement', 'Create or select a disbursement first.'); return; }
   const disb    = attachedDisb.label;
 
-  // REAL SDK: generateUtxoKeypair() + getNkFromUtxoPrivateKey()
-  const kp = await sdk_generateUtxoKeypair();
-  const nk = sdk_getNkFromUtxoPrivateKey(kp.privateKey);
+  const isDemoRun = attachedDisb.executionMode === 'demo' || attachedDisb.demoTx || executionMode === 'demo';
+  const kp = await sdk_generateUtxoKeypair({ demoMode: isDemoRun });
+  const nk = sdk_getNkFromUtxoPrivateKey(kp.privateKey, { demoMode: isDemoRun });
   const nkStr = sdk_nkToDisplayString(nk);
   const isImmediate = trigger === 'Immediate';
   const isGovernance = trigger === 'Governance approval';
@@ -2949,13 +3654,11 @@ async function issueVK() {
     if (unlockTime <= releaseBaseTime) { toast('Invalid release time', attachedExecuted ? 'Choose a custom release time in the future.' : 'Release time must be after execution time'); return; }
   }
   const governanceThresholdType = (document.getElementById('nvk-gov-thresh') || {}).value || '2/3 multisig approval';
-  const nvkDaoTotalMembers = parseInt((document.getElementById('nvk-dao-total-members') || {}).value || '50', 10) || 50;
-  const govConfig = isGovernance
-    ? resolveGovernanceConfig(governanceThresholdType)
-    : (isDao ? resolveGovernanceConfig('DAO majority vote', { daoTotalMembers: nvkDaoTotalMembers }) : null);
+  const requiresApproval = isGovernance || isDao;
+  const govConfig = requiresApproval ? getRegisteredApprovalConfig('viewingkey') : null;
+  if (govConfig && govConfig.error) { toast('Approval wallets required', govConfig.error); return; }
 
   const released = isImmediate && attachedExecuted;
-  const requiresApproval = isGovernance || isDao;
   const attachedTransactions = getStoredTransactionsForDisbursement(attachedDisb);
   const attachedSummary = attachedDisb.transactionSummary || summarizeTransactions(attachedTransactions);
   upsertViewingKeyRecord({
@@ -2982,6 +3685,7 @@ async function issueVK() {
     createdAt: Date.now(),
     recipient: recip,
     requesterLabel: recip,
+    type: 'viewing_key_request',
     scope: normalizeScopeLabel(scope),
     visibilityScope: normalizeScopeLabel(scope),
     trigger,
@@ -2990,8 +3694,9 @@ async function issueVK() {
     requiredApprovals: requiresApproval ? govConfig.requiredApprovals : undefined,
     guardians: requiresApproval ? govConfig.guardians : undefined,
     voters: isDao ? govConfig.voters : undefined,
+    daoMembers: isDao ? govConfig.daoMembers : undefined,
     governanceThreshold: requiresApproval ? govConfig.governanceThreshold : undefined,
-    governanceThresholdType: isGovernance ? governanceThresholdType : (isDao ? 'DAO majority vote' : undefined),
+    governanceThresholdType: requiresApproval ? govConfig.governanceThresholdType : undefined,
     governanceType: requiresApproval ? govConfig.governanceType : undefined,
     governanceMode: requiresApproval ? govConfig.governanceMode : undefined,
     daoTotalMembers: isDao ? govConfig.daoTotalMembers : undefined,
@@ -3001,33 +3706,66 @@ async function issueVK() {
 
   renderOverview();
   if (recipEl) recipEl.value = '';
+  nvkRegistrationSlots = [];
+  syncRegistrationSlots('viewingkey');
   toast(isGovernance || isDao ? 'Release request submitted' : 'Viewing key issued', recip + ' \u00b7 getNkFromUtxoPrivateKey() called');
 }
 
 // ─── GOVERNANCE VOTE ──────────────────────────────────────────────────────────
-function castVote(approve) {
+async function castVote(approve) {
   const selected = viewingKeys.find(vk => String(vk.id) === String(selectedGovernanceKeyId));
   if (!selected) { toast('No governance key', 'Select a pending governance key first.'); return; }
   if (selected.released) { toast('Already unlocked', selected.disbursementLabel + ' is already released.'); return; }
   const isScheduledDisbursementKey = String(selected.id) === 'disb-' + selected.disbursementId || selected.recipient === 'Scheduled release';
-  const actors = selected.releaseTrigger === 'dao' ? (selected.voters || selected.guardians || []) : (selected.guardians || []);
+  const actors = getGovernanceActorRecords(selected);
   const d = disbursements.find(item => item.id === selected.disbursementId);
   if (d && !isDisbursementExecuted(d)) {
     toast('Awaiting scheduled execution', selected.disbursementLabel + ' is not executable for governance yet.');
     return;
   }
 
+  const isDemoVote = executionMode === 'demo' || selected.executionMode === 'demo' || selected.demoTx || (d && (d.executionMode === 'demo' || d.demoTx));
+  let voter = null;
+  let voteSignature = '';
+  if (isDemoVote) {
+    voter = actors.find(actor => !hasActorVoted(selected, actor));
+    if (!voter) { toast('All votes cast', 'Governance round complete.'); return; }
+    if (!voter.walletAddress) voter.walletAddress = 'DEMO-VOTER-' + voter.label;
+    if (!voter.providerType) voter.providerType = governanceVoterProviderType;
+    governanceVoterWalletAddress = voter.walletAddress;
+    voteSignature = 'DEMO-VOTE-' + Date.now() + '-' + voter.label;
+  } else {
+    try {
+      const timestamp = Date.now();
+      const connected = await connectGovernanceProvider(governanceVoterProviderType);
+      governanceVoterWalletAddress = connected.walletAddress;
+      voter = actors.find(actor => normalizeWalletAddress(actor.walletAddress) === normalizeWalletAddress(connected.walletAddress));
+      if (!voter) { toast('This wallet is not authorized to vote on this release.', 'Connect one of the registered approval wallets.'); renderGovernancePanel(); return; }
+      if (hasWalletVoted(selected, connected.walletAddress)) { toast('Vote already recorded', 'This wallet has already voted on this release.'); renderGovernancePanel(); return; }
+      const message = (approve ? 'Approve' : 'Reject') + ' Cloak Treasury release: ' + selected.disbursementLabel + ' | voter: ' + connected.walletAddress + ' | timestamp: ' + timestamp;
+      const finalSigned = await signConnectedGovernanceMessage(message, governanceVoterProviderType);
+      voter.providerType = finalSigned.providerType || governanceVoterProviderType;
+      voteSignature = finalSigned.signature;
+    } catch(err) {
+      toast(err.message === 'Transaction rejected' ? 'Transaction rejected' : 'Vote failed', err.message || 'Wallet did not sign the vote.');
+      return;
+    }
+  }
+
   if (!approve) {
     selected.rejected = true;
-    selected.rejectedBy = actors.find(g => !(selected.approvals || []).includes(g)) || actors[0];
+    selected.rejectedBy = voter.walletAddress;
+    selected.rejectedProviderType = voter.providerType || governanceVoterProviderType;
+    selected.rejectionSignature = voteSignature;
     const rejectedDisb = disbursements.find(item => item.id === selected.disbursementId);
     if (rejectedDisb && isScheduledDisbursementKey) {
       rejectedDisb.rejected = true;
       rejectedDisb.rejectedBy = selected.rejectedBy;
       rejectedDisb.approvals = (selected.approvals || []).slice();
       rejectedDisb.requiredApprovals = selected.requiredApprovals;
-      rejectedDisb.guardians = selected.guardians.slice();
+      rejectedDisb.guardians = Array.isArray(selected.guardians) ? selected.guardians.slice() : [];
       rejectedDisb.voters = selected.voters ? selected.voters.slice() : undefined;
+      rejectedDisb.daoMembers = selected.daoMembers ? selected.daoMembers.slice() : undefined;
       rejectedDisb.daoTotalMembers = selected.daoTotalMembers;
       saveStoredDisbursements();
     }
@@ -3040,22 +3778,28 @@ function castVote(approve) {
   }
 
   selected.approvals = selected.approvals || [];
-  const nextGuardian = actors.find(g => !selected.approvals.includes(g));
-  if (!nextGuardian) { toast('All votes cast', 'Governance round complete.'); return; }
-  selected.approvals.push(nextGuardian);
+  selected.approvals.push({
+    walletAddress: voter.walletAddress,
+    voteSignature,
+    votedAt: Date.now(),
+    label: voter.label,
+    providerType: voter.providerType || governanceVoterProviderType,
+    demoSignature: isDemoVote
+  });
 
   if (d && isScheduledDisbursementKey) {
     d.approvals = selected.approvals.slice();
     d.requiredApprovals = selected.requiredApprovals;
-    d.guardians = selected.guardians.slice();
+    d.guardians = Array.isArray(selected.guardians) ? selected.guardians.slice() : [];
     d.voters = selected.voters ? selected.voters.slice() : undefined;
+    d.daoMembers = selected.daoMembers ? selected.daoMembers.slice() : undefined;
     d.daoTotalMembers = selected.daoTotalMembers;
     d.governanceType = selected.governanceType;
     d.governanceThreshold = selected.governanceThreshold;
     d.governanceMode = selected.governanceMode;
   }
 
-  if (selected.approvals.length >= selected.requiredApprovals) {
+  if (getApprovalCount(selected) >= selected.requiredApprovals) {
     selected.released = true;
     selected.pendingApproval = false;
     if (!selected.nk && selected.pendingNk) selected.nk = selected.pendingNk;
@@ -3070,7 +3814,7 @@ function castVote(approve) {
     }
     toast('Viewing key released', selected.disbursementLabel + (selected.releaseTrigger === 'dao' ? ' \u00b7 DAO approval reached 60%' : ' \u2014 governance consensus reached'));
   } else {
-    toast('Vote recorded', (selected.requiredApprovals - selected.approvals.length) + ' more vote needed');
+    toast('Vote recorded', (selected.requiredApprovals - getApprovalCount(selected)) + ' more vote needed');
   }
 
   saveStoredViewingKeys();
@@ -3087,7 +3831,7 @@ function pasteDemo() {
   const latestKey = getLatestViewingKey();
   const latestDisb = latestKey ? disbursements.find(d => d.id === latestKey.disbursementId) : null;
   el.value = latestKey
-    ? (latestKey.released ? latestKey.nkDisplay : (latestDisb && !isDisbursementExecuted(latestDisb) ? 'nk: [awaiting scheduled execution]' : (latestKey.releaseTrigger === 'dao' ? 'nk: [pending DAO approval]' : (latestKey.releaseTrigger === 'governance' ? 'nk: [pending governance approval]' : (latestKey.releaseTrigger === 'custom_time' ? 'nk: [locked until custom release time]' : 'nk: [locked until release]')))))
+    ? (latestKey.released ? latestKey.nkDisplay : (latestDisb && !isDisbursementExecuted(latestDisb) ? 'nk: [awaiting scheduled execution]' : (latestKey.releaseTrigger === 'dao' ? 'nk: [pending DAO approval]' : (latestKey.releaseTrigger === 'governance' ? 'nk: [pending governance approval]' : (latestKey.releaseTrigger === 'block_height' ? 'nk: [locked until block height ' + Number(latestKey.releaseBlockHeight || latestDisb?.releaseBlockHeight || 0).toLocaleString() + ']' : (latestKey.releaseTrigger === 'custom_time' ? 'nk: [locked until custom release time]' : 'nk: [locked until release]'))))))
     : DEMO_AUDIT_KEY;
 }
 
@@ -3199,8 +3943,8 @@ async function runDecrypt() {
     toast('Disbursement not executed yet', 'Wait until the scheduled execution time has passed.');
     return;
   }
-  if (key.includes('[locked until release]') || key.includes('[locked until custom release time]') || key.includes('[pending governance approval]') || key.includes('[pending DAO approval]')) {
-    toast('Key not released', key.includes('DAO') ? 'Wait until DAO approval reaches 60%.' : (key.includes('governance') ? 'Wait until governance approval completes.' : (key.includes('custom') ? 'Wait until the custom release time.' : 'Wait until the release countdown reaches zero.')));
+  if (key.includes('[locked until release]') || key.includes('[locked until block height') || key.includes('[locked until custom release time]') || key.includes('[pending governance approval]') || key.includes('[pending DAO approval]')) {
+    toast('Key not released', key.includes('block height') ? 'Wait until Solana Devnet reaches the configured block height.' : (key.includes('DAO') ? 'Wait until DAO approval reaches 60%.' : (key.includes('governance') ? 'Wait until governance approval completes.' : (key.includes('custom') ? 'Wait until the custom release time.' : 'Wait until the release countdown reaches zero.'))));
     return;
   }
   const matchingViewingKey = getViewingKeyByKey(key);
@@ -3217,11 +3961,7 @@ async function runDecrypt() {
     toast('Unknown viewing key', 'The linked disbursement could not be found.');
     return;
   }
-  if (!matchingViewingKey && viewingKeys.length > 0) {
-    toast('Unknown viewing key', 'No issued viewing key matches that value.');
-    return;
-  }
-  if (!matchingViewingKey && key !== DEMO_AUDIT_KEY) {
+  if (!matchingViewingKey && !(executionMode === 'demo' && key === DEMO_AUDIT_KEY)) {
     toast('Unknown viewing key', 'No issued viewing key matches that value.');
     return;
   }
@@ -3230,16 +3970,24 @@ async function runDecrypt() {
   if (btn) { btn.disabled = true; btn.textContent = 'Running scanTransactions()\u2026'; }
 
   try {
-    // REAL SDK: scanTransactions() + toComplianceReport()
     const selectedDisb = matchingViewingKey ? matchingDisb : null;
     let report;
-    if (selectedDisb) {
+    const selectedDemoAudit = selectedDisb && (selectedDisb.demoTx || selectedDisb.executionMode === 'demo');
+    if (selectedDisb && selectedDemoAudit) {
       report = buildReportFromDisbursement(selectedDisb);
-    } else {
-      const nkBytes = new Uint8Array(16);
-      crypto.getRandomValues(nkBytes);
-      const scanResult = await sdk_scanTransactions({ connection:'mainnet-connection', programId:CLOAK_PROGRAM_ID, viewingKeyNk:nkBytes, limit:250 });
+    } else if (selectedDisb) {
+      const nkBytes = storedNkToBytes(matchingViewingKey.nk || selectedDisb.nk);
+      if (!nkBytes) { toast('Unknown viewing key', 'No issued viewing key matches that value.'); return; }
+      const scanResult = await sdk_scanTransactions({
+        programId: CLOAK_PROGRAM_ID,
+        viewingKeyNk: nkBytes,
+        limit: 250,
+        walletPublicKey: matchingViewingKey.walletPublicKey || selectedDisb.walletPublicKey
+      });
       report = await sdk_toComplianceReport(scanResult);
+    } else {
+      const scanResult = await sdk_scanTransactions({ demoMode: true, programId: CLOAK_PROGRAM_ID, limit: 250 });
+      report = await sdk_toComplianceReport(scanResult, { demoMode: true });
     }
 
     if (selectedDisb) {
