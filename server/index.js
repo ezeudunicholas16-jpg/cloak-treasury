@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import fs from "node:fs";
 import dotenv from "dotenv";
 import express from "express";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
@@ -12,7 +11,6 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT || 3001);
 const rpcUrl = process.env.RPC_URL || "https://api.devnet.solana.com";
-const relayUrl = process.env.CLOAK_RELAY_URL || "https://api.cloak.ag";
 
 app.use(express.json({ limit: "2mb" }));
 app.use((req, res, next) => {
@@ -24,55 +22,12 @@ app.use((req, res, next) => {
 });
 
 const connection = new Connection(rpcUrl, "confirmed");
-const DEFAULT_CLOAK_PROGRAM_ID = "zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW";
+const DEFAULT_CLOAK_PROGRAM_ID = "Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h";
 let cloakSdkPromise;
-
-function ensureCircomlibjsShim() {
-  const packageDir = path.join(__dirname, "..", "node_modules", "circomlibjs");
-  const packageJsonPath = path.join(packageDir, "package.json");
-  const indexPath = path.join(packageDir, "index.js");
-  const cjsPath = path.join(packageDir, "build", "main.cjs");
-
-  if (!fs.existsSync(cjsPath)) return;
-  if (!fs.existsSync(packageJsonPath)) {
-    fs.writeFileSync(packageJsonPath, JSON.stringify({
-      name: "circomlibjs",
-      version: "0.1.7",
-      type: "module",
-      main: "./index.js",
-      exports: "./index.js"
-    }, null, 2));
-  }
-  if (!fs.existsSync(indexPath)) {
-    fs.writeFileSync(indexPath, "import cjs from './build/main.cjs';\nexport const buildPoseidon = cjs.buildPoseidon;\nexport default cjs;\n");
-  }
-}
-
-function ensureNestedPackageShim(name) {
-  const nestedDir = path.join(__dirname, "..", "node_modules", "@cloak.dev", "sdk", "node_modules", name);
-  const packageJsonPath = path.join(nestedDir, "package.json");
-  const indexPath = path.join(nestedDir, "index.js");
-
-  if (!fs.existsSync(nestedDir)) return;
-  if (!fs.existsSync(packageJsonPath)) {
-    fs.writeFileSync(packageJsonPath, JSON.stringify({
-      name,
-      type: "module",
-      main: "./index.js",
-      exports: "./index.js"
-    }, null, 2));
-  }
-  if (!fs.existsSync(indexPath)) {
-    fs.writeFileSync(indexPath, `import pkg from '../../../../${name}/index.js';\nexport default pkg;\n`);
-  }
-}
 
 async function getCloakSdk() {
   if (!cloakSdkPromise) {
-    ensureCircomlibjsShim();
-    ensureNestedPackageShim("bs58");
-    ensureNestedPackageShim("base-x");
-    cloakSdkPromise = import("@cloak.dev/sdk");
+    cloakSdkPromise = import("@cloak.dev/sdk-devnet");
   }
   return cloakSdkPromise;
 }
@@ -199,7 +154,6 @@ app.post("/api/create-disbursement", asyncRoute(async (req) => {
     {
       connection,
       programId,
-      relayUrl,
       depositorKeypair: signer,
       walletPublicKey,
       chainNoteViewingKeyNk: nk,
