@@ -276,46 +276,74 @@ time lock/
 ├── server/
 │   └── index.js
 ```
+## Deployment
+
+This project is deployed using a split architecture:
+
+### Frontend (Netlify)
+- The frontend is hosted on Netlify
+- It serves the user interface for creating and managing disbursements
+- Automatically deploys from the GitHub repository on every update
+
+Live URL:
+https://cloaktreasury.netlify.app/
+
+### Backend (Render)
+- The backend is hosted on Render as a Node.js web service
+- Handles Cloak SDK interactions, transaction execution, and viewing key logic
+- Exposes API endpoints used by the frontend
+
+Backend URL:
+https://cloak-treasury.onrender.com
+
+### How they work together
+- The frontend sends requests to the backend API (Render)
+- The backend processes disbursements using the Cloak SDK
+- Results (transactions, viewing keys, audit data) are returned to the frontend
+- This separation ensures scalability and clean architecture
 
 ---
 
-## Setup Instructions
+## Viewing Keys & Audit Control
 
-### Install
+### Issuing a Viewing Key
 
-```bash
-npm install
-```
+The “Issue Viewing Key” feature allows controlled access to private transaction data.
 
----
+When a viewing key is issued:
+- A key is derived from the transaction’s private data (UTXO)
+- The key defines what level of information is visible
 
-### Run frontend
+### Visibility Scopes
 
-```bash
-npm run dev
-```
+Users can choose different levels of visibility:
 
-Open:
+- **Full audit trail**
+  - Shows amounts, addresses, and timestamps  
+- **Amounts only**
+  - Hides recipient identities  
+- **Timestamps only**
+  - Only shows when transactions occurred  
+- **Aggregate totals**
+  - Shows summary data without individual transaction details  
 
-```
-http://localhost:5173
-```
+### How it works
+- Viewing keys are generated client-side using Cloak SDK primitives
+- The key is never exposed publicly unless shared intentionally
+- The Auditor Portal uses the viewing key to decrypt and display allowed data
 
----
+### Example Flow
+1. Create a disbursement
+2. Select a visibility scope
+3. Issue a viewing key
+4. Share the key with an auditor
+5. Auditor inputs the key in the Auditor Portal
+6. Only permitted data is revealed
 
-### Run backend
-
-```bash
-npm run server
-```
-
-Backend:
-
-```
-http://localhost:3001
-```
-
----
+This ensures:
+- Privacy is preserved on-chain
+- Auditability is selectively enabled
+- Sensitive financial data remains protected
 
 ## Environment Variables
 
@@ -327,25 +355,6 @@ PORT=3001
 CORS_ORIGIN=http://localhost:5173
 CLOAK_RELAY_URL=https://api.cloak.ag
 TREASURY_PRIVATE_KEY=your_test_key
-```
-
----
-
-## Links
-
-Frontend:
-
-```
-http://localhost:5173
-```
-
-Backend:
-
-```
-http://localhost:3001
-```
-
----
 
 ## Program Info
 
