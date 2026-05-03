@@ -203,6 +203,7 @@ app.get("/health", (req, res) => {
     service: "cloak-treasury-api",
     network: "solana-devnet"
   });
+});
 
 app.listen(port, () => {
   console.log(`Cloak backend running on port ${port}`);
