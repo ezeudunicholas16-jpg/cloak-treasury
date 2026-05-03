@@ -197,6 +197,13 @@ app.post("/api/compliance-report", asyncRoute(async (req) => {
   return normalizeReportForUi(jsonSafe(report));
 }));
 
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "cloak-treasury-api",
+    network: "solana-devnet"
+  });
+
 app.listen(port, () => {
-  console.log(`Cloak backend listening on http://localhost:${port}`);
+  console.log(`Cloak backend running on port ${port}`);
 });
