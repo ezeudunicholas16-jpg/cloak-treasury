@@ -961,10 +961,9 @@ var sdk_nkToDisplayString = function() {
 <script type="module">
 import {
   CLOAK_DEVNET_PROGRAM_ID,
-  CLOAK_DEVNET_RELAY_URL,
-  DEMO_MODE,
   DEVNET_MOCK_USDC_MINT_ADDRESS,
   DEVNET_NATIVE_SOL_MINT_ADDRESS,
+  DEVNET_USDT_MINT_ADDRESS,
   DEVNET_RPC_URL as CLOAK_DEVNET_RPC_URL,
   sdk_createUtxo,
   sdk_createZeroUtxo,
@@ -979,10 +978,9 @@ import { Connection as SolanaConnection, PublicKey as SolanaPublicKey } from '@s
 
 Object.assign(window, {
   CLOAK_DEVNET_PROGRAM_ID,
-  CLOAK_DEVNET_RELAY_URL,
-  DEMO_MODE,
   DEVNET_MOCK_USDC_MINT_ADDRESS,
   DEVNET_NATIVE_SOL_MINT_ADDRESS,
+  DEVNET_USDT_MINT_ADDRESS,
   CLOAK_DEVNET_RPC_URL,
   SolanaConnection,
   SolanaPublicKey,
@@ -1010,12 +1008,16 @@ const CLOAK_PROGRAM_ID = 'Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h';
 const USDC_MINT        = '61ro7AExqfk4dZYoCyRzTahahCC2TdUUZ4M5epMPunJf'; // Cloak Devnet mock USDC
 const USDT_MINT        = 'EJwZgeZrdC8TXTQbQBoL6bfuAnFUUy1PVCMB4DYPzVaS'; // Devnet USDT test mint
 const NATIVE_SOL_MINT  = 'So11111111111111111111111111111111111111112';
-const RELAY_URL        = 'https://api.devnet.cloak.ag';
 const VARIABLE_FEE     = 0.003;
+const DEVNET_TOKEN_MINTS = {
+  SOL: NATIVE_SOL_MINT,
+  USDC: USDC_MINT,
+  USDT: USDT_MINT
+};
 const TOKEN_CONFIGS = {
-  SOL:  { symbol: 'SOL',  mint: NATIVE_SOL_MINT, decimals: 9 },
-  USDC: { symbol: 'USDC', mint: USDC_MINT, decimals: 6 },
-  USDT: { symbol: 'USDT', mint: USDT_MINT, decimals: 6 }
+  SOL:  { symbol: 'SOL',  mint: DEVNET_TOKEN_MINTS.SOL, decimals: 9 },
+  USDC: { symbol: 'USDC', mint: DEVNET_TOKEN_MINTS.USDC, decimals: 6 },
+  USDT: { symbol: 'USDT', mint: DEVNET_TOKEN_MINTS.USDT, decimals: 6 }
 };
 const ESTIMATED_SOL_FEE_LAMPORTS = 10_000_000n;
 
@@ -2575,6 +2577,12 @@ function getTokenConfig(token) {
   return config;
 }
 
+function getTokenMintConfigError(token) {
+  return String(token || activeToken).toUpperCase() === 'USDT'
+    ? 'Devnet USDT mint not configured'
+    : 'Devnet mint not configured for this token.';
+}
+
 function parseTokenAmountToBaseUnits(value, decimals) {
   const raw = String(value || '').trim();
   if (!raw || !/^\d+(\.\d+)?$/.test(raw)) return null;
@@ -2601,7 +2609,7 @@ function isValidSolanaAddress(value) {
 
 function getValidatedRecipientSnapshot(token) {
   const tokenConfig = getTokenConfig(token);
-  if (!tokenConfig) return { error: 'Devnet mint not configured for this token.' };
+  if (!tokenConfig) return { error: getTokenMintConfigError(token) };
   if (!recipients.length) return { error: 'Add at least one recipient.' };
   const recipientSnapshot = [];
   let totalBaseUnits = 0n;
@@ -2636,7 +2644,7 @@ function shortMint(mint) {
 
 function getDisbursementBatchConfig(d) {
   const tokenConfig = getTokenConfig(d?.token);
-  if (!tokenConfig) return { error: 'Devnet mint not configured for this token.' };
+  if (!tokenConfig) return { error: getTokenMintConfigError(d?.token) };
   const recipientSnapshot = (d?.recipients || []).map((row, index) => {
     const addr = row.addr || row.recipient || 'recipient-' + (index + 1);
     const amountBaseUnits = row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString();
@@ -2911,6 +2919,7 @@ async function validateLiveExecutionPreconditions(walletType, walletPublicKey, b
   const liveProvider = getSolanaProvider(walletType);
   if (!walletPublicKey) return { head: 'Connect wallet first', body: 'Connect a Solana wallet on Devnet before executing a live disbursement.' };
   if (!liveProvider) return { head: walletLabel(walletType) + ' not found', body: 'Open or install the selected Solana wallet.' };
+  if (!liveProvider.signTransaction) return { head: 'Connect wallet first', body: walletLabel(walletType) + ' cannot sign Solana transactions right now.' };
   if (!window.SolanaConnection || !window.SolanaPublicKey) return null;
   try {
     const connection = new window.SolanaConnection(DEVNET_RPC_URL, 'confirmed');
@@ -2919,29 +2928,29 @@ async function validateLiveExecutionPreconditions(walletType, walletPublicKey, b
     const recipientsCount = Math.max(1, (batchConfig?.recipientSnapshot || []).length);
     const feeReserve = ESTIMATED_SOL_FEE_LAMPORTS * BigInt(recipientsCount);
     if (!batchConfig) {
-      if (lamports <= 0n) return { head: 'Insufficient SOL balance.', body: 'Fund this Devnet wallet before executing.' };
+      if (lamports <= 0n) return { head: 'Insufficient devnet SOL', body: 'Fund this Devnet wallet before executing.' };
       return null;
     }
     const tokenConfig = batchConfig.tokenConfig;
-    if (!tokenConfig || !tokenConfig.mint) return { head: 'Devnet mint not configured for this token.', body: 'Choose a token with a configured Devnet mint.' };
+    if (!tokenConfig || !tokenConfig.mint) return { head: getTokenMintConfigError(tokenConfig?.symbol || activeToken), body: 'Choose a token with a configured Devnet mint.' };
     if (tokenConfig.symbol === 'SOL') {
-      if (lamports < batchConfig.totalBaseUnits + feeReserve) return { head: 'Insufficient SOL balance.', body: 'Fund this Devnet wallet before executing.' };
+      if (lamports < batchConfig.totalBaseUnits + feeReserve) return { head: 'Insufficient devnet SOL', body: 'Fund this Devnet wallet before executing.' };
       return null;
     }
-    if (lamports < feeReserve) return { head: 'Insufficient SOL balance.', body: 'Fund this Devnet wallet for transaction fees.' };
+    if (lamports < feeReserve) return { head: 'Insufficient devnet SOL', body: 'Fund this Devnet wallet for transaction fees.' };
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, { mint: new window.SolanaPublicKey(tokenConfig.mint) });
     const tokenBalance = (tokenAccounts.value || []).reduce((sum, account) => {
       const amount = account?.account?.data?.parsed?.info?.tokenAmount?.amount || '0';
       return sum + BigInt(amount);
     }, 0n);
-    if (tokenBalance < batchConfig.totalBaseUnits) return { head: 'Insufficient token balance.', body: 'Fund the associated token account before executing.' };
+    if (tokenBalance < batchConfig.totalBaseUnits) return { head: 'Insufficient token balance', body: 'Fund the associated token account before executing.' };
     return null;
   } catch(err) {
     if (err && /invalid/i.test(err.message || '')) return { head: 'Connect wallet first', body: 'Connected wallet address could not be verified.' };
     if (batchConfig && batchConfig.tokenConfig && batchConfig.tokenConfig.symbol !== 'SOL') {
-      return { head: 'Insufficient token balance.', body: 'Unable to verify this token balance on Devnet.' };
+      return { head: 'Insufficient token balance', body: 'Unable to verify this token balance on Devnet.' };
     }
-    return { head: 'Insufficient SOL balance.', body: 'Unable to verify this wallet balance on Devnet.' };
+    return { head: 'Insufficient devnet SOL', body: 'Unable to verify this wallet balance on Devnet.' };
   }
 }
 
@@ -2949,7 +2958,7 @@ async function executeDisbursementTransaction(detail) {
   const token = detail.token || activeToken;
   const total = detail.total || 0;
   const tokenConfig = detail.tokenConfig || getTokenConfig(token);
-  if (!tokenConfig) throw new Error('Devnet mint not configured for this token.');
+  if (!tokenConfig) throw new Error(getTokenMintConfigError(token));
   const recipientSnapshot = (detail.recipientSnapshot || []).map((row, index) => ({
     ...row,
     recipient: row.recipient || row.addr || 'recipient-' + (index + 1),
@@ -2992,13 +3001,14 @@ async function executeDisbursementTransaction(detail) {
   for (const [index, recipient] of recipientSnapshot.entries()) {
     if (!recipient.amountBaseUnits) throw new Error('Enter a valid amount.');
     const amountBaseUnits = BigInt(recipient.amountBaseUnits);
-    const zeroUtxo = await sdk_createZeroUtxo(tokenConfig.mint, { demoMode: isDemoRun });
-    const outputUtxo = await sdk_createUtxo(amountBaseUnits, owner, tokenConfig.mint, { demoMode: isDemoRun });
+    const tokenMintOptions = { demoMode: isDemoRun, token: tokenConfig.symbol, usdtMint: tokenConfig.symbol === 'USDT' ? tokenConfig.mint : undefined };
+    const zeroUtxo = await sdk_createZeroUtxo(tokenConfig.mint, tokenMintOptions);
+    const outputUtxo = await sdk_createUtxo(amountBaseUnits, owner, tokenConfig.mint, tokenMintOptions);
     outputUtxos.push(outputUtxo);
     addDashLog('gr', '<strong>createZeroUtxo() + createUtxo()</strong> \u2014 recipient ' + (index + 1) + '/' + recipientSnapshot.length + ' \u00b7 ' + Number(recipient.amount || 0).toLocaleString() + ' ' + tokenConfig.symbol + ' \u00b7 mint ' + shortMint(tokenConfig.mint) + '<span class="sdk-tag">SDK</span>');
     const result = await sdk_transact(
       { inputUtxos: [zeroUtxo], outputUtxos: [outputUtxo], externalAmount: amountBaseUnits, depositor: depositorPublicKey || 'treasury-fallback' },
-      { connection: 'devnet-connection', programId: CLOAK_PROGRAM_ID, depositorKeypair: null, wallet: walletAdapter, walletPublicKey: depositorPublicKey, walletType: walletLabel(walletType), chainNoteViewingKeyNk: nk, recipients: [recipient], releaseTrigger: detail.releaseTrigger, mint: tokenConfig.mint, demoMode: isDemoRun }
+      { connection: 'devnet-connection', programId: CLOAK_PROGRAM_ID, depositorKeypair: null, wallet: walletAdapter, walletPublicKey: depositorPublicKey, walletType: walletLabel(walletType), chainNoteViewingKeyNk: nk, recipients: [recipient], releaseTrigger: detail.releaseTrigger, token: tokenConfig.symbol, mint: tokenConfig.mint, usdtMint: tokenConfig.symbol === 'USDT' ? tokenConfig.mint : undefined, demoMode: isDemoRun }
     );
     results.push(result);
     recipient.signature = result.signature;

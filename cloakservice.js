@@ -16,12 +16,20 @@ import {
 window.Buffer = window.Buffer || Buffer;
 globalThis.Buffer = globalThis.Buffer || Buffer;
 
-export const DEMO_MODE = false;
 export const DEVNET_RPC_URL = "https://api.devnet.solana.com";
-export const CLOAK_DEVNET_RELAY_URL = "https://api.devnet.cloak.ag";
 export const CLOAK_DEVNET_PROGRAM_ID = DEVNET_CLOAK_PROGRAM_ID.toBase58();
 export const DEVNET_MOCK_USDC_MINT_ADDRESS = DEVNET_MOCK_USDC_MINT.toBase58();
 export const DEVNET_NATIVE_SOL_MINT_ADDRESS = DEVNET_NATIVE_SOL_MINT.toBase58();
+export const DEVNET_USDT_MINT_ADDRESS =
+  globalThis.CLOAK_DEVNET_USDT_MINT_ADDRESS ||
+  (typeof import.meta !== "undefined" ? import.meta.env?.VITE_DEVNET_USDT_MINT_ADDRESS : null) ||
+  "EJwZgeZrdC8TXTQbQBoL6bfuAnFUUy1PVCMB4DYPzVaS";
+export const DEVNET_TOKEN_MINT_ADDRESSES = {
+  SOL: DEVNET_NATIVE_SOL_MINT_ADDRESS,
+  USDC: DEVNET_MOCK_USDC_MINT_ADDRESS,
+  USDT: DEVNET_USDT_MINT_ADDRESS
+};
+const ESTIMATED_SOL_FEE_LAMPORTS = 10_000_000n;
 
 function bytesToDisplay(bytes, prefix = "nk:1q") {
   const hex = Array.from(bytes || new Uint8Array(8))
@@ -62,15 +70,39 @@ function normalizeWalletPublicKey(walletPublicKey, wallet) {
   return publicKey;
 }
 
-async function assertWalletHasDevnetSol(connection, publicKey) {
-  const balanceLamports = await connection.getBalance(publicKey);
-  if (!balanceLamports || balanceLamports <= 0) {
+async function assertWalletHasDevnetSol(connection, publicKey, requiredLamports = 1n) {
+  const balanceLamports = BigInt(await connection.getBalance(publicKey));
+  if (balanceLamports < requiredLamports) {
     throw new Error("Insufficient devnet SOL");
   }
 }
 
+async function assertWalletHasTokenBalance(connection, owner, mint, requiredAmount) {
+  if (mint.toBase58() === DEVNET_NATIVE_SOL_MINT_ADDRESS) return;
+  const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, { mint });
+  const tokenBalance = (tokenAccounts.value || []).reduce((sum, account) => {
+    const amount = account?.account?.data?.parsed?.info?.tokenAmount?.amount || "0";
+    return sum + BigInt(amount);
+  }, 0n);
+  if (tokenBalance < requiredAmount) throw new Error("Insufficient token balance");
+}
+
+export function getDevnetTokenMintAddress(token, options = {}) {
+  const normalized = String(token || "").toUpperCase();
+  if (normalized === "SOL") return DEVNET_NATIVE_SOL_MINT_ADDRESS;
+  if (normalized === "USDC") return DEVNET_MOCK_USDC_MINT_ADDRESS;
+  if (normalized === "USDT") return options.usdtMint || DEVNET_USDT_MINT_ADDRESS || null;
+  return null;
+}
+
 function getUtxoMint(utxo, options = {}) {
-  return utxo?.mint || utxo?.mintAddress || utxo?.assetMint || options.mint || DEVNET_MOCK_USDC_MINT_ADDRESS;
+  const selectedToken = String(options.token || "").toUpperCase();
+  if (selectedToken) {
+    const selectedMint = getDevnetTokenMintAddress(selectedToken, options);
+    if (!selectedMint) throw new Error(selectedToken === "USDT" ? "Devnet USDT mint not configured" : "Devnet mint not configured for this token.");
+    return selectedMint;
+  }
+  return options.mint || utxo?.mint || utxo?.mintAddress || utxo?.assetMint || DEVNET_NATIVE_SOL_MINT_ADDRESS;
 }
 
 function demoScanResult() {
@@ -129,7 +161,10 @@ function normalizeReportForUi(report) {
 function normalizeLiveExecutionError(error) {
   const message = String(error?.message || error || "");
   if (/reject|declin|cancel/i.test(message)) return new Error("Transaction rejected");
-  if (/insufficient devnet sol|no devnet sol|0 lamports|balance/i.test(message)) return new Error("Insufficient devnet SOL");
+  if (/devnet usdt mint not configured/i.test(message)) return new Error("Devnet USDT mint not configured");
+  if (/devnet mint not configured/i.test(message)) return new Error("Devnet mint not configured for this token.");
+  if (/insufficient token balance/i.test(message)) return new Error("Insufficient token balance");
+  if (/insufficient devnet sol|no devnet sol|0 lamports|insufficient funds/i.test(message)) return new Error("Insufficient devnet SOL");
   if (/connect wallet/i.test(message)) return new Error("Connect wallet first");
   return new Error("Live Cloak Devnet execution failed. Switch to Demo Mode to simulate.");
 }
@@ -152,20 +187,24 @@ export function sdk_nkToDisplayString(nk) {
 }
 
 export async function sdk_createZeroUtxo(mint, options = {}) {
+  const mintAddress = mint || getDevnetTokenMintAddress(options.token, options);
+  if (options.token && !mintAddress) throw new Error(options.token === "USDT" ? "Devnet USDT mint not configured" : "Devnet mint not configured for this token.");
   if (isDemoOptions(options)) {
-    return { amount: 0n, mint, commitment: "demo-zero-" + Math.random().toString(16).slice(2, 18) };
+    return { amount: 0n, mint: mintAddress, commitment: "demo-zero-" + Math.random().toString(16).slice(2, 18) };
   }
-  return createZeroUtxo(parsePublicKey(mint || DEVNET_MOCK_USDC_MINT_ADDRESS, "Invalid token mint"));
+  return createZeroUtxo(parsePublicKey(mintAddress || DEVNET_NATIVE_SOL_MINT_ADDRESS, "Invalid token mint"));
 }
 
 export async function sdk_createUtxo(amount, owner, mint, options = {}) {
+  const mintAddress = mint || getDevnetTokenMintAddress(options.token, options);
+  if (options.token && !mintAddress) throw new Error(options.token === "USDT" ? "Devnet USDT mint not configured" : "Devnet mint not configured for this token.");
   if (isDemoOptions(options)) {
     const rnd = new Uint8Array(16);
     crypto.getRandomValues(rnd);
     const commitment = "demo-commitment-" + Array.from(rnd).map((b) => b.toString(16).padStart(2, "0")).join("");
-    return { amount, owner, keypair: owner, mint, commitment };
+    return { amount, owner, keypair: owner, mint: mintAddress, commitment };
   }
-  return createUtxo(amount, owner, parsePublicKey(mint || DEVNET_MOCK_USDC_MINT_ADDRESS, "Invalid token mint"));
+  return createUtxo(amount, owner, parsePublicKey(mintAddress || DEVNET_NATIVE_SOL_MINT_ADDRESS, "Invalid token mint"));
 }
 
 export async function sdk_transact(params, options = {}) {
@@ -196,7 +235,12 @@ export async function sdk_transact(params, options = {}) {
     const programId = parsePublicKey(options.programId || CLOAK_DEVNET_PROGRAM_ID, "Invalid program ID");
     const amountLamports = BigInt(params.externalAmount ?? output.amount ?? 0);
     if (amountLamports <= 0n) throw new Error("Invalid amount");
-    await assertWalletHasDevnetSol(connection, depositorPublicKey);
+    if (mint.toBase58() === DEVNET_NATIVE_SOL_MINT_ADDRESS) {
+      await assertWalletHasDevnetSol(connection, depositorPublicKey, amountLamports + ESTIMATED_SOL_FEE_LAMPORTS);
+    } else {
+      await assertWalletHasDevnetSol(connection, depositorPublicKey, ESTIMATED_SOL_FEE_LAMPORTS);
+      await assertWalletHasTokenBalance(connection, depositorPublicKey, mint, amountLamports);
+    }
 
     const outputUtxo = output?.keypair ? output : await createUtxo(amountLamports, await generateUtxoKeypair(), mint);
     const zeroUtxo = params.inputUtxos?.[0]?.keypair ? params.inputUtxos[0] : await createZeroUtxo(mint);
@@ -228,7 +272,6 @@ export async function sdk_transact(params, options = {}) {
       {
         connection,
         programId,
-        relayUrl: CLOAK_DEVNET_RELAY_URL,
         wallet,
         signTransaction,
         signMessage: wallet.signMessage,
