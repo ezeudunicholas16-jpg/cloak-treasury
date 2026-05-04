@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@cloak.dev/sdk-devnet": "^0.1.5-devnet.1",
+    "@cloak.dev/sdk": "^0.1.6",
+    "@cloak.dev/sdk-devnet": "^0.1.0",
     "@solana/web3.js": "^1.95.0",
     "buffer": "^6.0.3",
     "dotenv": "^17.4.2",
@@ -13,8 +14,8 @@
     "vite": "^5.0.0"
   },
   "scripts": {
-    "dev": "C:\\PROGRA~1\\nodejs\\node.exe ./node_modules/vite/bin/vite.js",
-    "build": "C:\\PROGRA~1\\nodejs\\node.exe ./node_modules/vite/bin/vite.js build",
+    "dev": "vite",
+    "build": "vite build",
     "server": "node server/index.js"
   }
 }
