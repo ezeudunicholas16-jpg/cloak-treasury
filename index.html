@@ -976,7 +976,31 @@ import {
 } from './cloakservice.js';
 import { Connection as SolanaConnection, PublicKey as SolanaPublicKey } from '@solana/web3.js';
 
+const API_BASE = import.meta.env.VITE_API_URL || "https://cloak-treasury.onrender.com";
+
+async function checkBackendHealth() {
+  try {
+    const response = await fetch(`${API_BASE}/health`, { cache: 'no-store' });
+    window.backendHealth = {
+      ok: response.ok,
+      status: response.status,
+      checkedAt: Date.now()
+    };
+    return window.backendHealth;
+  } catch (error) {
+    window.backendHealth = {
+      ok: false,
+      error: error?.message || 'Backend health check failed',
+      checkedAt: Date.now()
+    };
+    console.warn('Backend health check failed', error);
+    return window.backendHealth;
+  }
+}
+
 Object.assign(window, {
+  API_BASE,
+  checkBackendHealth,
   CLOAK_DEVNET_PROGRAM_ID,
   DEVNET_MOCK_USDC_MINT_ADDRESS,
   DEVNET_NATIVE_SOL_MINT_ADDRESS,
@@ -993,6 +1017,7 @@ Object.assign(window, {
   sdk_toComplianceReport,
   sdk_transact
 });
+checkBackendHealth();
 if (window.__resolveCloakSdkReady) window.__resolveCloakSdkReady();
 </script>
 

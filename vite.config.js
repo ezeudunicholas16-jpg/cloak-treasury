@@ -1,5 +1,7 @@
 import { defineConfig } from "vite";
 
+const API_PROXY_TARGET = process.env.VITE_API_URL || "https://cloak-treasury.onrender.com";
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -14,7 +16,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://localhost:3001"
+      "/api": {
+        target: API_PROXY_TARGET,
+        changeOrigin: true,
+        secure: true
+      }
     }
   }
 });
