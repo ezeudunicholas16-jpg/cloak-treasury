@@ -4,7 +4,7 @@
   "type": "module",
   "dependencies": {
     "@cloak.dev/sdk": "^0.1.6",
-    "@cloak.dev/sdk-devnet": "^0.1.0",
+    "@cloak.dev/sdk-devnet": "latest",
     "@solana/web3.js": "^1.95.0",
     "buffer": "^6.0.3",
     "dotenv": "^17.4.2",
