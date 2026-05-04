@@ -646,7 +646,7 @@ textarea{resize:none;height:70px;line-height:1.6}
         </div>
       </div>
 
-      <button class="btn primary full" onclick="submitDisb()" style="padding:12px">
+      <button class="btn primary full" id="execute-disbursement-btn" type="button" style="padding:12px">
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1.5" y="5.5" width="10" height="6" rx="1.2" fill="#7fffd4" opacity=".6"/><path d="M4 5.5V4.2a2.5 2.5 0 0 1 5 0V5.5" stroke="#7fffd4" stroke-width="1.1" stroke-linecap="round"/></svg>
         Execute shielded disbursement
       </button>
@@ -959,22 +959,10 @@ var sdk_nkToDisplayString = function() {
 </script>
 
 <script type="module">
-import {
-  CLOAK_DEVNET_PROGRAM_ID,
-  DEVNET_MOCK_USDC_MINT_ADDRESS,
-  DEVNET_NATIVE_SOL_MINT_ADDRESS,
-  DEVNET_USDT_MINT_ADDRESS,
-  DEVNET_RPC_URL as CLOAK_DEVNET_RPC_URL,
-  sdk_createUtxo,
-  sdk_createZeroUtxo,
-  sdk_generateUtxoKeypair,
-  sdk_getNkFromUtxoPrivateKey,
-  sdk_nkToDisplayString,
-  sdk_scanTransactions,
-  sdk_toComplianceReport,
-  sdk_transact
-} from './cloakservice.js';
-import { Connection as SolanaConnection, PublicKey as SolanaPublicKey } from '@solana/web3.js';
+import { Buffer } from 'buffer';
+
+window.Buffer = window.Buffer || Buffer;
+globalThis.Buffer = globalThis.Buffer || Buffer;
 
 const API_BASE = import.meta.env.VITE_API_URL || "https://cloak-treasury.onrender.com";
 
@@ -998,27 +986,55 @@ async function checkBackendHealth() {
   }
 }
 
-Object.assign(window, {
-  API_BASE,
-  checkBackendHealth,
-  CLOAK_DEVNET_PROGRAM_ID,
-  DEVNET_MOCK_USDC_MINT_ADDRESS,
-  DEVNET_NATIVE_SOL_MINT_ADDRESS,
-  DEVNET_USDT_MINT_ADDRESS,
-  CLOAK_DEVNET_RPC_URL,
-  SolanaConnection,
-  SolanaPublicKey,
-  sdk_createUtxo,
-  sdk_createZeroUtxo,
-  sdk_generateUtxoKeypair,
-  sdk_getNkFromUtxoPrivateKey,
-  sdk_nkToDisplayString,
-  sdk_scanTransactions,
-  sdk_toComplianceReport,
-  sdk_transact
+Object.assign(window, { API_BASE, checkBackendHealth });
+
+(async function bootstrapCloakSdk() {
+  const cloakSdk = await import('./cloakservice.js');
+  const solanaWeb3 = await import('@solana/web3.js');
+  const {
+    CLOAK_DEVNET_PROGRAM_ID,
+    DEVNET_MOCK_USDC_MINT_ADDRESS,
+    DEVNET_NATIVE_SOL_MINT_ADDRESS,
+    DEVNET_USDT_MINT_ADDRESS,
+    DEVNET_RPC_URL: CLOAK_DEVNET_RPC_URL,
+    sdk_createUtxo,
+    sdk_createZeroUtxo,
+    sdk_generateUtxoKeypair,
+    sdk_getNkFromUtxoPrivateKey,
+    sdk_nkToDisplayString,
+    sdk_scanTransactions,
+    sdk_toComplianceReport,
+    sdk_transact
+  } = cloakSdk;
+  const { Connection: SolanaConnection, PublicKey: SolanaPublicKey } = solanaWeb3;
+
+  Object.assign(window, {
+    API_BASE,
+    checkBackendHealth,
+    CLOAK_DEVNET_PROGRAM_ID,
+    DEVNET_MOCK_USDC_MINT_ADDRESS,
+    DEVNET_NATIVE_SOL_MINT_ADDRESS,
+    DEVNET_USDT_MINT_ADDRESS,
+    CLOAK_DEVNET_RPC_URL,
+    SolanaConnection,
+    SolanaPublicKey,
+    PublicKey: SolanaPublicKey,
+    sdk_createUtxo,
+    sdk_createZeroUtxo,
+    sdk_generateUtxoKeypair,
+    sdk_getNkFromUtxoPrivateKey,
+    sdk_nkToDisplayString,
+    sdk_scanTransactions,
+    sdk_toComplianceReport,
+    sdk_transact
+  });
+  checkBackendHealth();
+  if (window.__resolveCloakSdkReady) window.__resolveCloakSdkReady();
+})().catch(function(error) {
+  console.error('Cloak SDK bootstrap failed', error);
+  window.__cloakSdkReadyError = error;
+  if (window.__resolveCloakSdkReady) window.__resolveCloakSdkReady();
 });
-checkBackendHealth();
-if (window.__resolveCloakSdkReady) window.__resolveCloakSdkReady();
 </script>
 
 <script>
@@ -1045,6 +1061,7 @@ const TOKEN_CONFIGS = {
   USDT: { symbol: 'USDT', mint: DEVNET_TOKEN_MINTS.USDT, decimals: 6 }
 };
 const ESTIMATED_SOL_FEE_LAMPORTS = 10_000_000n;
+const DAY_MS = 86400 * 1000;
 
 // ─── APP STATE ────────────────────────────────────────────────────────────────
 let activeToken = 'USDC';   // NOTE: named activeToken to avoid clash with selToken()
@@ -1139,7 +1156,7 @@ function loadStoredDisbursements() {
 function saveStoredDisbursements() {
   try {
     const stored = disbursements.filter(d => d.nkDisplay || d.txSignature || d.status === 'scheduled' || d.executionTime);
-    localStorage.setItem(DISBURSEMENTS_STORAGE_KEY, JSON.stringify(stored));
+    localStorage.setItem(DISBURSEMENTS_STORAGE_KEY, safeStringify(stored));
   } catch(err) {
     console.warn('Unable to save disbursements', err);
   }
@@ -1158,10 +1175,22 @@ function loadStoredViewingKeys() {
 
 function saveStoredViewingKeys() {
   try {
-    localStorage.setItem(VIEWING_KEYS_STORAGE_KEY, JSON.stringify(viewingKeys));
+    localStorage.setItem(VIEWING_KEYS_STORAGE_KEY, safeStringify(viewingKeys));
   } catch(err) {
     console.warn('Unable to save viewing keys', err);
   }
+}
+
+function safeStringify(value) {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (key, current) => {
+    if (typeof current === 'bigint') return current.toString();
+    if (current && typeof current === 'object') {
+      if (seen.has(current)) return undefined;
+      seen.add(current);
+    }
+    return current;
+  });
 }
 
 function shortAddress(value) {
@@ -1785,6 +1814,11 @@ function normalizeViewingKeyRecord(vk) {
   const govConfig = releaseTrigger === 'governance' || releaseTrigger === 'dao'
     ? resolveGovernanceConfig(null, { ...d, ...vk, releaseTrigger })
     : { governanceThreshold: vk.governanceThreshold || '', governanceType: vk.governanceType || '', governanceMode: vk.governanceMode || '', daoTotalMembers: vk.daoTotalMembers || undefined, requiredApprovals: vk.requiredApprovals || 2, guardians: Array.isArray(vk.guardians) ? vk.guardians : ['G1', 'G2', 'G3'], voters: Array.isArray(vk.voters) ? vk.voters : undefined };
+  const expiryConfig = getViewingKeyExpiryConfig(vk.expiryLabel || (vk.expiryDays ? vk.expiryDays + ' days after release' : 'Never expires'));
+  const releasedAt = vk.releasedAt || null;
+  const storedExpiryTime = expiryConfig.expiryDays ? (vk.expiryTime || vk.expiresAt || vk.expirationTime || null) : null;
+  const expiryTime = storedExpiryTime || calculateExpiryTime(expiryConfig.expiryDays, releasedAt);
+  const expired = !!vk.expired || (!!expiryTime && Date.now() >= Number(expiryTime));
   return {
     id: vk.id || Date.now(),
     disbursementId: linkedDisbursementId,
@@ -1797,6 +1831,10 @@ function normalizeViewingKeyRecord(vk) {
     pendingNkDisplay: vk.pendingNkDisplay || '',
     released: linkedExecuted && !!vk.released,
     executed: linkedExecuted,
+    expired,
+    expiryLabel: expiryConfig.expiryLabel,
+    expiryDays: expiryConfig.expiryDays,
+    expiryTime: expiryTime ? Number(expiryTime) : null,
     pendingApproval: linkedExecuted && !!vk.pendingApproval && !vk.released,
     unlockTime: vk.unlockTime || (d ? d.unlockTime : null),
     releaseBlockHeight: Number(vk.releaseBlockHeight ?? (d ? d.releaseBlockHeight : 0)) || null,
@@ -1831,7 +1869,7 @@ function normalizeViewingKeyRecord(vk) {
     daoTotalMembers: govConfig.daoTotalMembers,
     rejected: !!vk.rejected,
     rejectedBy: vk.rejectedBy || null,
-    releasedAt: vk.releasedAt || null
+    releasedAt
   };
 }
 
@@ -1893,6 +1931,8 @@ function reconcileViewingKeyReleases() {
       if (vk.released) {
         vk.released = false;
         vk.releasedAt = null;
+        vk.expiryTime = null;
+        vk.expired = false;
         changed = true;
       }
       if (!vk.awaitingExecution) {
@@ -1922,6 +1962,7 @@ function reconcileViewingKeyReleases() {
       vk.releasedAt = Date.now();
       changed = true;
     }
+    if (applyViewingKeyExpiry(vk)) changed = true;
   });
   if (changed) {
     saveStoredViewingKeys();
@@ -2029,12 +2070,13 @@ function nav(page, el) {
 
 // ─── TOKEN SELECTION ──────────────────────────────────────────────────────────
 function selToken(el, t) {
+  syncRecipientsFromInputs();
   activeToken = t;
   document.querySelectorAll('.tok').forEach(b => b.classList.remove('on'));
   el.classList.add('on');
   const tokEl = document.getElementById('total-tok');
   if (tokEl) tokEl.textContent = t;
-  updateSDKPreview();
+  renderRecips();
 }
 
 // ─── TRIGGER SELECTION ────────────────────────────────────────────────────────
@@ -2181,10 +2223,11 @@ function renderRecips() {
   recipients.forEach(r => {
     const row = document.createElement('div');
     row.className = 'recip-row';
+    row.dataset.recipientId = r.id;
     row.innerHTML =
-      '<input type="text" placeholder="Wallet or stealth addr" value="' + (r.addr||'') + '" oninput="updR(' + r.id + ',\'addr\',this.value)">' +
-      '<input type="number" placeholder="0.00" value="' + (r.amount||'') + '" oninput="updR(' + r.id + ',\'amount\',this.value)">' +
-      '<div class="fs10 tx3 mono" style="padding-top:9px">' + activeToken + '</div>' +
+      '<input type="text" data-recipient-field="addr" placeholder="Wallet or stealth addr" value="' + escapeHtml(r.addrRaw ?? r.addr ?? '') + '" oninput="updR(' + r.id + ',\'addr\',this.value)">' +
+      '<input type="number" data-recipient-field="amount" placeholder="0.00" value="' + escapeHtml(r.amount||'') + '" oninput="updR(' + r.id + ',\'amount\',this.value)">' +
+      '<div class="fs10 tx3 mono" data-recipient-token style="padding-top:9px">' + escapeHtml(activeToken) + '</div>' +
       '<button class="btn" style="padding:5px;width:28px;height:28px" onclick="removeRecip(' + r.id + ')">' +
         '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>' +
       '</button>';
@@ -2195,16 +2238,62 @@ function renderRecips() {
 
 function updR(id, field, value) {
   const r = recipients.find(x => x.id === id);
-  if (r) r[field] = value;
+  if (r) {
+    r[field] = value;
+    if (field === 'addr') r.addrRaw = value;
+  }
   updTotals();
 }
 
+function readRecipientInputSnapshot() {
+  const list = document.getElementById('recip-list');
+  const rows = list ? Array.from(list.querySelectorAll('.recip-row')) : [];
+  if (!rows.length) {
+    return recipients.map(r => ({
+      ...r,
+      addrRaw: String(r.addrRaw ?? r.addr ?? ''),
+      addr: String(r.addrRaw ?? r.addr ?? '').trim(),
+      amount: String(r.amount || '').trim()
+    }));
+  }
+  return rows.map((row, index) => {
+    const stored = recipients.find(r => String(r.id) === String(row.dataset.recipientId)) || recipients[index] || {};
+    const addrInput = row.querySelector('[data-recipient-field="addr"]') || row.querySelector('input[type="text"]');
+    const amountInput = row.querySelector('[data-recipient-field="amount"]') || row.querySelector('input[type="number"]');
+    return {
+      ...stored,
+      id: stored.id || Number(row.dataset.recipientId) || Date.now() + index,
+      addrRaw: String(addrInput ? addrInput.value : (stored.addrRaw ?? stored.addr ?? '')),
+      addr: String(addrInput ? addrInput.value : (stored.addrRaw ?? stored.addr ?? '')).trim(),
+      amount: String(amountInput ? amountInput.value : stored.amount || '').trim()
+    };
+  });
+}
+
+function syncRecipientsFromInputs() {
+  recipients = readRecipientInputSnapshot();
+  return recipients;
+}
+
+function getSolanaPublicKeyConstructor() {
+  return window.PublicKey || window.SolanaPublicKey || null;
+}
+
+async function ensureSolanaPublicKeyReady() {
+  if (getSolanaPublicKeyConstructor()) return true;
+  if (window.__cloakSdkReady) {
+    try { await window.__cloakSdkReady; } catch {}
+  }
+  return !!getSolanaPublicKeyConstructor();
+}
+
 function updTotals() {
-  const tot = recipients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const currentRecipients = readRecipientInputSnapshot();
+  const tot = currentRecipients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
   const amtEl = document.getElementById('total-amt');
   const rcpEl = document.getElementById('total-recip');
   if (amtEl) amtEl.textContent = '$' + tot.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-  if (rcpEl) rcpEl.textContent = recipients.length;
+  if (rcpEl) rcpEl.textContent = currentRecipients.length;
   updateScore();
   updateSDKPreview();
 }
@@ -2216,10 +2305,11 @@ function updateSDKPreview() {
   const label  = (document.getElementById('disb-label') || {}).value || '\u2026';
   const tokenConfig = getTokenConfig(activeToken);
   const mint   = tokenConfig ? tokenConfig.mint : 'UNCONFIGURED_MINT';
-  const total  = recipients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const currentRecipients = readRecipientInputSnapshot();
+  const total  = currentRecipients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
   const amtStr = total > 0 ? total.toLocaleString() + ' ' + activeToken : 'amount';
   el.innerHTML =
-    '<span class="cmt">// ' + (label || 'Disbursement') + ' \u2014 ' + recipients.length + ' recipient(s)</span>\n' +
+    '<span class="cmt">// ' + (label || 'Disbursement') + ' \u2014 ' + currentRecipients.length + ' recipient(s)</span>\n' +
     '<span class="cmt">// mint: ' + mint + '</span>\n' +
     '<span class="fn">const</span> owner = await <span class="fn">generateUtxoKeypair</span>()\n' +
     '<span class="fn">const</span> outputs = recipients.map(r =&gt; <span class="fn">createUtxo</span>(r.amountBaseUnits, owner, <span class="param">mint</span>))\n' +
@@ -2280,7 +2370,8 @@ function addVKConfig() {
   const recipEl = document.getElementById('vk-recip');
   const r = recipEl ? recipEl.value.trim() : '';
   if (!r) { toast('Missing field', 'Enter a viewing key recipient.'); return; }
-  vkConfigs.push({ recipient: r, scope: document.getElementById('vk-scope').value, trigger: selTrig });
+  const expiry = getViewingKeyExpiryConfig((document.getElementById('vk-expiry') || {}).value || 'Never expires');
+  vkConfigs.push({ recipient: r, scope: document.getElementById('vk-scope').value, trigger: selTrig, ...expiry });
   renderVKConfigs();
   toast('Viewing key config added', r + ' \u00b7 ' + selTrig);
 }
@@ -2291,7 +2382,7 @@ function renderVKConfigs() {
   el.innerHTML = vkConfigs.map((v, i) =>
     '<div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:9px 11px;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
       '<div><div class="fs12" style="color:var(--tx)">' + v.recipient + '</div>' +
-      '<div class="fs10 mono tx3" style="margin-top:1px">' + v.scope.split('(')[0].trim() + ' \u00b7 ' + v.trigger + '</div></div>' +
+      '<div class="fs10 mono tx3" style="margin-top:1px">' + v.scope.split('(')[0].trim() + ' \u00b7 ' + v.trigger + ' \u00b7 ' + (v.expiryLabel || 'Never expires') + '</div></div>' +
       '<button class="btn sm danger" onclick="rmVKConfig(' + i + ')">\u2715</button>' +
     '</div>'
   ).join('');
@@ -2387,6 +2478,7 @@ function registerReleasedViewingKey(d) {
     if (vk.disbursementId === d.id && !vk.released && isScheduledDisbursementKey && (!isApprovalKey || isDisbursementReleased(d))) {
       vk.released = true;
       vk.releasedAt = d.releasedAt;
+      applyViewingKeyExpiry(vk, d.releasedAt);
       changed = true;
     }
   });
@@ -2445,7 +2537,10 @@ function getDisbursementStatusInfo(d) {
 function getViewingKeyStatusInfo(vk) {
   const d = disbursements.find(item => item.id === vk.disbursementId);
   if (d && !isDisbursementExecuted(d)) return { label: 'Scheduled', cls: 'pending', detail: 'Awaiting scheduled execution' };
-  if (vk.released) return { label: 'Released', cls: 'revealed', detail: vk.releasedAt ? 'Released ' + new Date(vk.releasedAt).toLocaleString() : 'Released' };
+  if (isViewingKeyExpired(vk)) return { label: 'Expired', cls: 'locked', detail: 'Viewing key expired' };
+  const expiry = getExpiryTime(vk);
+  const expiringSoon = expiry && expiry > Date.now() && expiry <= Date.now() + 7 * DAY_MS;
+  if (vk.released) return { label: expiringSoon ? 'Expiring soon' : 'Active', cls: expiringSoon ? 'pending' : 'revealed', detail: expiry ? 'Expires ' + new Date(expiry).toLocaleString() : (vk.releasedAt ? 'Released ' + new Date(vk.releasedAt).toLocaleString() : 'Released') };
   if (vk.releaseTrigger === 'dao') return { label: 'Pending DAO', cls: 'pending', detail: 'DAO approval pending' };
   if (vk.releaseTrigger === 'governance') return { label: 'Pending governance', cls: 'pending', detail: 'Governance approval pending' };
   if (vk.releaseTrigger === 'block_height') return { label: 'Locked', cls: 'locked', detail: 'Until ' + getReleaseMetricLabel(vk.releaseMetric || solanaReleaseMetric) + ' ' + Number(vk.releaseBlockHeight || 0).toLocaleString() };
@@ -2455,7 +2550,58 @@ function getViewingKeyStatusInfo(vk) {
 }
 
 function getExpiryTime(vk) {
-  return vk.expiryTime || vk.expiresAt || vk.expirationTime || null;
+  const value = vk ? (vk.expiryTime || vk.expiresAt || vk.expirationTime || null) : null;
+  return value ? Number(value) : null;
+}
+
+function getViewingKeyExpiryConfig(option) {
+  const text = String(option || 'Never expires');
+  if (/30 days/i.test(text)) return { expiryLabel: '30 days after release', expiryDays: 30, expiryTime: null };
+  if (/90 days/i.test(text)) return { expiryLabel: '90 days after release', expiryDays: 90, expiryTime: null };
+  return { expiryLabel: 'Never expires', expiryDays: null, expiryTime: null };
+}
+
+function getSelectedViewingKeyExpiryConfig() {
+  const fromConfig = vkConfigs[0];
+  if (fromConfig && (fromConfig.expiryLabel || fromConfig.expiryDays !== undefined)) {
+    return getViewingKeyExpiryConfig(fromConfig.expiryLabel || (fromConfig.expiryDays ? fromConfig.expiryDays + ' days after release' : 'Never expires'));
+  }
+  return getViewingKeyExpiryConfig((document.getElementById('vk-expiry') || {}).value || 'Never expires');
+}
+
+function calculateExpiryTime(expiryDays, releasedAt) {
+  return expiryDays && releasedAt ? Number(releasedAt) + Number(expiryDays) * DAY_MS : null;
+}
+
+function applyViewingKeyExpiry(vk, releasedAtOverride) {
+  if (!vk) return false;
+  let changed = false;
+  const now = Date.now();
+  const expiryConfig = getViewingKeyExpiryConfig(vk.expiryLabel || (vk.expiryDays ? vk.expiryDays + ' days after release' : 'Never expires'));
+  if (vk.expiryDays !== expiryConfig.expiryDays) { vk.expiryDays = expiryConfig.expiryDays; changed = true; }
+  if (vk.expiryLabel !== expiryConfig.expiryLabel) { vk.expiryLabel = expiryConfig.expiryLabel; changed = true; }
+  if (!vk.released) {
+    if (vk.expired) { vk.expired = false; changed = true; }
+    return changed;
+  }
+  const releasedAt = releasedAtOverride || vk.releasedAt || now;
+  if (!vk.releasedAt) { vk.releasedAt = releasedAt; changed = true; }
+  const expiryTime = calculateExpiryTime(vk.expiryDays, vk.releasedAt);
+  if ((vk.expiryTime || null) !== expiryTime) { vk.expiryTime = expiryTime; changed = true; }
+  const expired = !!expiryTime && now >= expiryTime;
+  if (!!vk.expired !== expired) { vk.expired = expired; changed = true; }
+  if (expired && vk.status !== 'expired') { vk.status = 'expired'; changed = true; }
+  return changed;
+}
+
+function isViewingKeyExpired(vk) {
+  if (!vk) return false;
+  const expiryTime = getExpiryTime(vk);
+  return !!vk.expired || (!!expiryTime && Date.now() >= expiryTime);
+}
+
+function isViewingKeyUsable(vk, d) {
+  return !!vk && vk.released === true && (!d || isDisbursementExecuted(d)) && !isViewingKeyExpired(vk);
 }
 
 function renderOverview() {
@@ -2471,7 +2617,7 @@ function renderOverview() {
   const soonCutoff = Date.now() + 7 * 86400 * 1000;
   const expiringSoon = realKeys.filter(vk => {
     const expiry = getExpiryTime(vk);
-    return expiry && expiry > Date.now() && expiry <= soonCutoff;
+    return vk.released && !isViewingKeyExpired(vk) && expiry && expiry > Date.now() && expiry <= soonCutoff;
   }).length;
 
   const totalEl = document.getElementById('total-disbursed-stat');
@@ -2564,10 +2710,13 @@ function renderStoredViewingKeys() {
   container.innerHTML = '';
   viewingKeys.forEach(vk => {
     const d = disbursements.find(item => item.id === vk.disbursementId);
-    const released = !!vk.released && (!d || isDisbursementExecuted(d));
+    const expired = isViewingKeyExpired(vk);
+    const released = !!vk.released && !expired && (!d || isDisbursementExecuted(d));
     const awaitingExecution = d ? !isDisbursementExecuted(d) : !!vk.awaitingExecution;
     const isGovernancePending = (vk.releaseTrigger === 'governance' || vk.releaseTrigger === 'dao') && !released;
-    const badgeText = released ? 'ACTIVE' : (awaitingExecution ? 'SCHEDULED' : (isGovernancePending ? 'GOV. PENDING' : 'LOCKED'));
+    const expiry = getExpiryTime(vk);
+    const expiringSoon = released && expiry && expiry > Date.now() && expiry <= Date.now() + 7 * DAY_MS;
+    const badgeText = expired ? 'EXPIRED' : (released ? (expiringSoon ? 'EXPIRING SOON' : 'ACTIVE') : (awaitingExecution ? 'SCHEDULED' : (isGovernancePending ? 'GOV. PENDING' : 'LOCKED')));
     const blockMetricLabel = getReleaseMetricLabel(vk.releaseMetric || d?.releaseMetric || solanaReleaseMetric);
     const blockStatusText = 'nk: [locked until ' + blockMetricLabel + ' ' + Number(vk.releaseBlockHeight || d?.releaseBlockHeight || 0).toLocaleString() + ']';
     const lockedText = awaitingExecution ? 'nk: [awaiting scheduled execution]' : (vk.releaseTrigger === 'dao' ? 'nk: [pending DAO approval]' : (isGovernancePending ? 'nk: [pending governance approval]' : (vk.releaseTrigger === 'block_height' ? blockStatusText : (vk.releaseTrigger === 'custom_time' ? 'nk: [locked until custom release time]' : 'nk: [locked until release]'))));
@@ -2583,10 +2732,10 @@ function renderStoredViewingKeys() {
       '<div class="vk-head">' +
         '<div><div class="vk-name">' + vk.recipient + '</div>' +
         '<div class="vk-scope">' + (d ? d.label : vk.disbursementLabel) + ' \u00b7 ' + vk.scope.split('(')[0].trim() + ' \u00b7 ' + vk.trigger + '</div></div>' +
-        '<span class="badge ' + (released ? 'active' : 'locked') + '">' + badgeText + '</span>' +
+        '<span class="badge ' + (expired ? 'locked' : (released ? (expiringSoon ? 'pending' : 'active') : 'locked')) + '">' + badgeText + '</span>' +
       '</div>' +
-      '<div class="vk-key" title="' + (released ? 'Click to copy' : 'Locked until release') + '" onclick="toast(\'' + (released ? 'Copied' : 'Locked') + '\',\'' + (released ? 'Share this key securely' : lockedToast) + '\')">' +
-        (released ? vk.nkDisplay : lockedText) +
+      '<div class="vk-key" title="' + (released ? 'Click to copy' : (expired ? 'Viewing key expired' : 'Locked until release')) + '" onclick="toast(\'' + (released ? 'Copied' : (expired ? 'Viewing key expired' : 'Locked')) + '\',\'' + (released ? 'Share this key securely' : (expired ? 'This viewing key can no longer decrypt audit history.' : lockedToast)) + '\')">' +
+        (released ? vk.nkDisplay : (expired ? 'nk: [expired]' : lockedText)) +
       '</div>';
     container.appendChild(card);
   });
@@ -2622,10 +2771,17 @@ function parseTokenAmountToBaseUnits(value, decimals) {
   return amount > 0n ? amount : null;
 }
 
-function isValidSolanaAddress(value) {
+function logRecipientValidationValue(rawValue, trimmedAddress, row) {
+  const rowText = row ? ' row ' + row : '';
+  console.log('Recipient wallet validation raw value' + rowText + ':', String(rawValue ?? ''));
+  console.log('Recipient wallet validation trimmed value' + rowText + ':', trimmedAddress);
+}
+
+function isValidSolanaAddress(address) {
   try {
-    if (!value || !window.SolanaPublicKey) return false;
-    new window.SolanaPublicKey(String(value).trim());
+    const PublicKey = getSolanaPublicKeyConstructor();
+    if (!PublicKey) throw new Error('Solana PublicKey unavailable');
+    new PublicKey(address);
     return true;
   } catch {
     return false;
@@ -2635,21 +2791,29 @@ function isValidSolanaAddress(value) {
 function getValidatedRecipientSnapshot(token) {
   const tokenConfig = getTokenConfig(token);
   if (!tokenConfig) return { error: getTokenMintConfigError(token) };
-  if (!recipients.length) return { error: 'Add at least one recipient.' };
+  const currentRecipients = syncRecipientsFromInputs();
+  if (!currentRecipients.length) return { error: 'Add at least one recipient.' };
   const recipientSnapshot = [];
   let totalBaseUnits = 0n;
   let totalAmount = 0;
-  for (const r of recipients) {
-    const addr = String(r.addr || '').trim();
-    if (!isValidSolanaAddress(addr)) return { error: 'Invalid recipient wallet address.' };
+  for (const [index, r] of currentRecipients.entries()) {
+    const rawAddr = String(r.addrRaw ?? r.addr ?? '');
+    const addr = rawAddr.trim();
+    logRecipientValidationValue(rawAddr, addr, index + 1);
+    if (!isValidSolanaAddress(addr)) {
+      const message = 'Invalid recipient wallet address in row ' + (index + 1);
+      console.error('Rejected recipient wallet address row ' + (index + 1) + ':', addr);
+      return { error: message, detail: message };
+    }
     const amountBaseUnits = parseTokenAmountToBaseUnits(r.amount, tokenConfig.decimals);
-    if (!amountBaseUnits) return { error: 'Enter a valid amount.' };
+    if (!amountBaseUnits) return { error: 'Enter a valid amount.', detail: 'Row ' + (index + 1) + ': Enter a valid amount.' };
     const displayAmount = Number(r.amount);
-    if (!Number.isFinite(displayAmount) || displayAmount <= 0) return { error: 'Enter a valid amount.' };
+    if (!Number.isFinite(displayAmount) || displayAmount <= 0) return { error: 'Enter a valid amount.', detail: 'Row ' + (index + 1) + ': Enter a valid amount.' };
     totalBaseUnits += amountBaseUnits;
     totalAmount = roundMoney(totalAmount + displayAmount);
     recipientSnapshot.push({
       addr,
+      addrRaw: rawAddr,
       recipient: addr,
       amount: displayAmount,
       amountText: String(r.amount).trim(),
@@ -2671,11 +2835,13 @@ function getDisbursementBatchConfig(d) {
   const tokenConfig = getTokenConfig(d?.token);
   if (!tokenConfig) return { error: getTokenMintConfigError(d?.token) };
   const recipientSnapshot = (d?.recipients || []).map((row, index) => {
-    const addr = row.addr || row.recipient || 'recipient-' + (index + 1);
+    const rawAddr = String(row.addrRaw ?? row.addr ?? row.recipient ?? '');
+    const addr = rawAddr.trim();
     const amountBaseUnits = row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString();
     return {
       ...row,
       addr,
+      addrRaw: rawAddr,
       recipient: addr,
       token: row.token || tokenConfig.symbol,
       mint: row.mint || tokenConfig.mint,
@@ -2683,8 +2849,16 @@ function getDisbursementBatchConfig(d) {
       amountBaseUnits
     };
   });
-  if (recipientSnapshot.some(row => !isValidSolanaAddress(row.addr))) return { error: 'Invalid recipient wallet address.' };
-  if (recipientSnapshot.some(row => !row.amountBaseUnits || BigInt(row.amountBaseUnits) <= 0n)) return { error: 'Enter a valid amount.' };
+  for (const [index, row] of recipientSnapshot.entries()) {
+    logRecipientValidationValue(row.addrRaw, row.addr, index + 1);
+    if (!isValidSolanaAddress(row.addr)) {
+      const message = 'Invalid recipient wallet address in row ' + (index + 1);
+      console.error('Rejected recipient wallet address row ' + (index + 1) + ':', row.addr);
+      return { error: message, detail: message };
+    }
+  }
+  const invalidAmountIndex = recipientSnapshot.findIndex(row => !row.amountBaseUnits || BigInt(row.amountBaseUnits) <= 0n);
+  if (invalidAmountIndex >= 0) return { error: 'Enter a valid amount.', detail: 'Row ' + (invalidAmountIndex + 1) + ': Enter a valid amount.' };
   const totalBaseUnits = d?.totalBaseUnits
     ? BigInt(d.totalBaseUnits)
     : recipientSnapshot.reduce((sum, row) => sum + BigInt(row.amountBaseUnits || '0'), 0n);
@@ -2788,6 +2962,7 @@ function getScheduleDraft(label, total, executionConfig, releaseConfig, isDemoRu
   const daoTotalMembers = clampDaoMemberInput('dao-total-members');
   const govConfig = selTrig === 'gov' ? getRegisteredApprovalConfig('schedule') : resolveGovernanceConfig(govThreshold, { daoTotalMembers });
   const selectedVisibilityScope = normalizeScopeLabel((vkConfigs[0] || {}).scope || (document.getElementById('vk-scope') || {}).value || 'Full audit trail');
+  const expiryConfig = getSelectedViewingKeyExpiryConfig();
   const releaseTrigger = selTrig === 'gov'
     ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance')
     : (selTrig === 'time' || selTrig === 'block' ? releaseConfig.releaseTrigger : selTrig);
@@ -2800,6 +2975,7 @@ function getScheduleDraft(label, total, executionConfig, releaseConfig, isDemoRu
     totalBaseUnits: batchConfig?.totalBaseUnits ? batchConfig.totalBaseUnits.toString() : '',
     govConfig,
     selectedVisibilityScope,
+    expiryConfig,
     releaseTrigger,
     triggerLabel,
     delay: releaseConfig ? (releaseConfig.delay || 0) : 0,
@@ -2871,6 +3047,11 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     demoTx: false,
     nkDisplay: '',
     released: false,
+    releasedAt: null,
+    expiryLabel: draft.expiryConfig.expiryLabel,
+    expiryDays: draft.expiryConfig.expiryDays,
+    expiryTime: null,
+    expired: false,
     pendingApproval: false,
     awaitingExecution: true,
     type: 'disbursement',
@@ -2916,6 +3097,11 @@ function createScheduledDisbursementRecord(label, total, executionConfig, releas
     walletNetwork: newD.walletNetwork,
     executionMode: newD.executionMode,
     demoTx: false,
+    releasedAt: null,
+    expiryLabel: newD.expiryLabel,
+    expiryDays: newD.expiryDays,
+    expiryTime: null,
+    expired: false,
     createdAt: newD.created,
     recipient: 'Scheduled release',
     scope: draft.selectedVisibilityScope,
@@ -2945,7 +3131,7 @@ async function validateLiveExecutionPreconditions(walletType, walletPublicKey, b
   if (!walletPublicKey) return { head: 'Connect wallet first', body: 'Connect a Solana wallet on Devnet before executing a live disbursement.' };
   if (!liveProvider) return { head: walletLabel(walletType) + ' not found', body: 'Open or install the selected Solana wallet.' };
   if (!liveProvider.signTransaction) return { head: 'Connect wallet first', body: walletLabel(walletType) + ' cannot sign Solana transactions right now.' };
-  if (!window.SolanaConnection || !window.SolanaPublicKey) return null;
+  if (!window.SolanaConnection || !window.SolanaPublicKey) return { head: 'Solana web3 unavailable', body: 'Reload the page and try again.' };
   try {
     const connection = new window.SolanaConnection(DEVNET_RPC_URL, 'confirmed');
     const owner = new window.SolanaPublicKey(walletPublicKey);
@@ -2979,21 +3165,49 @@ async function validateLiveExecutionPreconditions(walletType, walletPublicKey, b
   }
 }
 
+function renderExecutionSurfaces() {
+  renderOverview();
+  renderDisbCards();
+  renderStoredViewingKeys();
+  renderGovernancePanel();
+}
+
+function reportExecuteFailure(head, body, err) {
+  const title = head || (err && err.message) || 'Execution failed';
+  const detail = body || (err && err.message) || 'Try again after fixing the highlighted issue.';
+  console.error('[execute error]', err || new Error(title));
+  console.error('[execute] failed', err || new Error(title), { head: title, body: detail });
+  toast(title, detail);
+}
+
 async function executeDisbursementTransaction(detail) {
   const token = detail.token || activeToken;
   const total = detail.total || 0;
   const tokenConfig = detail.tokenConfig || getTokenConfig(token);
   if (!tokenConfig) throw new Error(getTokenMintConfigError(token));
-  const recipientSnapshot = (detail.recipientSnapshot || []).map((row, index) => ({
-    ...row,
-    recipient: row.recipient || row.addr || 'recipient-' + (index + 1),
-    addr: row.addr || row.recipient || 'recipient-' + (index + 1),
-    token: row.token || tokenConfig.symbol,
-    mint: row.mint || tokenConfig.mint,
-    decimals: row.decimals ?? tokenConfig.decimals,
-    amountBaseUnits: row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString()
-  }));
+  await ensureSolanaPublicKeyReady();
+  const recipientSnapshot = (detail.recipientSnapshot || []).map((row, index) => {
+    const rawAddr = String(row.addrRaw ?? row.addr ?? row.recipient ?? '');
+    const addr = rawAddr.trim();
+    return {
+      ...row,
+      recipient: addr,
+      addr,
+      addrRaw: rawAddr,
+      token: row.token || tokenConfig.symbol,
+      mint: row.mint || tokenConfig.mint,
+      decimals: row.decimals ?? tokenConfig.decimals,
+      amountBaseUnits: row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString()
+    };
+  });
   if (!recipientSnapshot.length) throw new Error('Add at least one recipient.');
+  for (const [index, row] of recipientSnapshot.entries()) {
+    logRecipientValidationValue(row.addrRaw, row.addr, index + 1);
+    if (!isValidSolanaAddress(row.addr)) {
+      console.error('Rejected recipient wallet address row ' + (index + 1) + ':', row.addr);
+      throw new Error('Invalid recipient wallet address in row ' + (index + 1));
+    }
+  }
   const isDemoRun = !!detail.isDemoRun;
   const walletType = detail.walletType || activeWalletType;
   const depositorPublicKey = detail.walletPublicKey || connectedWalletPublicKey || (isDemoRun ? 'demo-wallet-public-key' : null);
@@ -3140,6 +3354,11 @@ function applyExecutedDisbursementResult(d, executionResult) {
     walletNetwork: d.walletNetwork,
     executionMode: d.executionMode,
     demoTx: d.demoTx,
+    releasedAt: d.releasedAt || null,
+    expiryLabel: d.expiryLabel || 'Never expires',
+    expiryDays: d.expiryDays ?? null,
+    expiryTime: d.releasedAt ? calculateExpiryTime(d.expiryDays, d.releasedAt) : null,
+    expired: false,
     createdAt: d.created,
     recipient: 'Scheduled release',
     scope: d.scope,
@@ -3164,22 +3383,46 @@ function applyExecutedDisbursementResult(d, executionResult) {
 async function executeScheduledDisbursement(d) {
   if (!d || d.executing || d.status !== 'scheduled' || !d.executionTime || Date.now() < d.executionTime) return false;
   const isDemoRun = d.executionMode === 'demo' || d.demoTx;
+  await ensureSolanaPublicKeyReady();
   const batchConfig = getDisbursementBatchConfig(d);
   if (batchConfig.error) {
     d.executionError = batchConfig.error;
     d.executionErrorAt = Date.now();
     saveStoredDisbursements();
     renderDisbCards();
-    toast(batchConfig.error, batchConfig.error);
+    toast(batchConfig.error, batchConfig.detail || batchConfig.error);
     return false;
   }
   if (!isDemoRun) {
-    const liveError = await validateLiveExecutionPreconditions(d.walletType || activeWalletType, d.walletPublicKey || connectedWalletPublicKey, batchConfig);
+    if (!connectedWalletPublicKey) {
+      d.executionError = 'Wallet required to execute scheduled disbursement';
+      d.executionErrorAt = Date.now();
+      saveStoredDisbursements();
+      renderDisbCards();
+      console.error('[execute] scheduled live execution blocked', d.executionError, { disbursementId: d.id, label: d.label });
+      if (!d.walletRequiredNotified) {
+        d.walletRequiredNotified = true;
+        saveStoredDisbursements();
+        toast('Wallet required to execute scheduled disbursement', 'Connect the Solana Devnet wallet before this scheduled disbursement can execute.');
+      }
+      return false;
+    }
+    if (d.walletPublicKey && connectedWalletPublicKey !== d.walletPublicKey) {
+      d.executionError = 'Connect the scheduled execution wallet first';
+      d.executionErrorAt = Date.now();
+      saveStoredDisbursements();
+      renderDisbCards();
+      console.error('[execute] scheduled live execution wallet mismatch', { expected: d.walletPublicKey, connected: connectedWalletPublicKey, disbursementId: d.id });
+      toast('Connect the scheduled execution wallet first', 'The connected wallet must match the wallet saved for this scheduled disbursement.');
+      return false;
+    }
+    const liveError = await validateLiveExecutionPreconditions(d.walletType || activeWalletType, connectedWalletPublicKey, batchConfig);
     if (liveError) {
       d.executionError = liveError.head;
       d.executionErrorAt = Date.now();
       saveStoredDisbursements();
       renderDisbCards();
+      console.error('[execute] scheduled live preflight failed', liveError);
       toast(liveError.head, liveError.body);
       return false;
     }
@@ -3201,7 +3444,7 @@ async function executeScheduledDisbursement(d) {
       releaseTrigger: d.releaseTrigger,
       isDemoRun,
       walletType: d.walletType || activeWalletType,
-      walletPublicKey: d.walletPublicKey || connectedWalletPublicKey
+      walletPublicKey: isDemoRun ? (d.walletPublicKey || connectedWalletPublicKey) : connectedWalletPublicKey
     });
     applyExecutedDisbursementResult(d, executionResult);
     saveStoredDisbursements();
@@ -3214,12 +3457,13 @@ async function executeScheduledDisbursement(d) {
     d.executing = false;
     const rejected = err && /reject|declin|cancel/i.test(err.message || '');
     const insufficient = err && /insufficient (devnet )?(sol|token)/i.test(err.message || '');
-    const liveFailure = !isDemoRun && !rejected && !insufficient;
-    d.executionError = rejected ? 'Transaction rejected' : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed' : (err.message || 'Execution failed')));
+    const invalidRecipient = err && /invalid recipient wallet address/i.test(err.message || '');
+    const liveFailure = !isDemoRun && !rejected && !insufficient && !invalidRecipient;
+    d.executionError = invalidRecipient ? err.message : (rejected ? 'Transaction rejected' : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed' : (err.message || 'Execution failed'))));
     saveStoredDisbursements();
     renderDisbCards();
-    toast(rejected ? (isDemoRun ? 'Demo cancelled' : 'Transaction rejected') : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed. Switch to Demo Mode to simulate.' : 'Scheduled execution failed')),
-      rejected ? 'No disbursement transaction was saved.' : (insufficient ? 'Fund this wallet on Devnet or switch to Demo Mode.' : (liveFailure ? 'No disbursement transaction was saved.' : (err.message || 'Try again when the wallet is ready.'))));
+    toast(invalidRecipient ? err.message : (rejected ? (isDemoRun ? 'Demo cancelled' : 'Transaction rejected') : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed' : 'Scheduled execution failed'))),
+      invalidRecipient ? err.message : (rejected ? 'No disbursement transaction was saved.' : (insufficient ? 'Fund this wallet on Devnet or switch to Demo Mode.' : (err.message || 'Try again when the wallet is ready.'))));
     return false;
   }
 }
@@ -3290,39 +3534,71 @@ async function appSchedulerTick() {
 }
 
 // ─── SUBMIT DISBURSEMENT ──────────────────────────────────────────────────────
+async function executeShieldedDisbursement() {
+  console.log('[execute] clicked');
+  try {
+    const executionConfig = getExecutionScheduleConfig();
+    const currentRecipients = readRecipientInputSnapshot();
+    console.log('[execute] data', {
+      mode: executionMode,
+      token: activeToken,
+      recipients: currentRecipients,
+      amount: currentRecipients.reduce((sum, row) => sum + (parseFloat(row.amount) || 0), 0),
+      executionTime: executionConfig && executionConfig.executionTime
+    });
+    return await submitDisb();
+  } catch(err) {
+    console.error('[execute error]', err);
+    reportExecuteFailure(err && err.message ? err.message : 'Execution failed', err && err.message ? err.message : 'Execute shielded disbursement failed.', err);
+    return false;
+  }
+}
+window.executeShieldedDisbursement = executeShieldedDisbursement;
+
+function bindExecuteDisbursementButton() {
+  const btn = document.getElementById('execute-disbursement-btn');
+  if (!btn || btn.dataset.boundExecute === 'true') return;
+  btn.dataset.boundExecute = 'true';
+  btn.addEventListener('click', executeShieldedDisbursement);
+}
+
 async function submitDisb() {
   const labelEl = document.getElementById('disb-label');
   const label   = labelEl ? labelEl.value.trim() : '';
 
-  if (!label)             { toast('Missing label',  'Give this disbursement a name.'); return; }
-  if (!recipients.length) { toast('No recipients',  'Add at least one recipient.'); return; }
+  if (!label)             { reportExecuteFailure('Missing label', 'Give this disbursement a name.'); return false; }
+  syncRecipientsFromInputs();
+  if (!recipients.length) { reportExecuteFailure('No recipients', 'Add at least one recipient.'); return false; }
+  await ensureSolanaPublicKeyReady();
   const batchConfig = getValidatedRecipientSnapshot(activeToken);
-  if (batchConfig.error)  { toast(batchConfig.error, batchConfig.error); return; }
+  if (batchConfig.error)  { reportExecuteFailure(batchConfig.error, batchConfig.detail || batchConfig.error); return false; }
   const total = batchConfig.totalAmount;
-  if (activeWalletType === 'metamask') { toast('Cloak transactions require a Solana wallet', 'Switch to Phantom, Solflare, Backpack, or Glow.'); return; }
+  if (activeWalletType === 'metamask') { reportExecuteFailure('Cloak transactions require a Solana wallet', 'Switch to Phantom, Solflare, Backpack, or Glow.'); return false; }
   const executionConfig = getExecutionScheduleConfig();
   if (executionConfig.error) {
-    toast('Invalid execution time', executionConfig.error);
-    return;
+    reportExecuteFailure('Invalid execution time', executionConfig.error);
+    return false;
   }
   const preflightRelease = getSelectedReleaseConfig(executionConfig.executionTime);
   if (preflightRelease && preflightRelease.error) {
-    toast(preflightRelease.error === 'Enter a valid block height' ? 'Enter a valid block height' : 'Invalid release time', preflightRelease.error);
-    return;
+    reportExecuteFailure(preflightRelease.error === 'Enter a valid block height' ? 'Enter a valid block height' : 'Invalid release time', preflightRelease.error);
+    return false;
   }
   if (selTrig === 'gov') {
     const approvalConfig = getRegisteredApprovalConfig('schedule');
-    if (approvalConfig.error) { toast('Approval wallets required', approvalConfig.error); return; }
+    if (approvalConfig.error) { reportExecuteFailure('Approval wallets required', approvalConfig.error); return false; }
   }
   if (selTrig === 'block') await fetchSolanaBlockHeight(true);
   const isDemoRun = executionMode === 'demo';
   if (executionConfig.isScheduled) {
     if (!isDemoRun) {
-      const liveError = await validateLiveExecutionPreconditions(activeWalletType, connectedWalletPublicKey, batchConfig);
-      if (liveError) { toast(liveError.head, liveError.body); return; }
+      if (!connectedWalletPublicKey) { reportExecuteFailure('Connect wallet first', 'Connect a Solana wallet on Devnet before scheduling a live disbursement.'); return false; }
+      const liveProvider = getSolanaProvider(activeWalletType);
+      if (!liveProvider || !liveProvider.signTransaction) { reportExecuteFailure('Connect wallet first', walletLabel(activeWalletType) + ' must be available for scheduled execution signing.'); return false; }
     }
     const scheduled = createScheduledDisbursementRecord(label, total, executionConfig, preflightRelease, isDemoRun, batchConfig);
     resetScheduleForm(labelEl);
+    renderExecutionSurfaces();
     toast('Disbursement scheduled', scheduled.label + ' executes ' + new Date(scheduled.executionTime).toLocaleString() + ' \u00b7 viewing key waits for execution');
     setTimeout(() => {
       nav('disbursements');
@@ -3330,15 +3606,15 @@ async function submitDisb() {
       const disbItem = document.querySelector('.nav-item[data-page="disbursements"]');
       if (disbItem) disbItem.classList.add('active');
     }, 700);
-    return;
+    return true;
   }
   if (!isDemoRun) {
     const liveError = await validateLiveExecutionPreconditions(activeWalletType, connectedWalletPublicKey, batchConfig);
-    if (liveError) { toast(liveError.head, liveError.body); return; }
+    if (liveError) { reportExecuteFailure(liveError.head, liveError.body); return false; }
   }
 
   const btn = document.querySelector('#page-schedule .btn.primary.full');
-  if (!btn) return;
+  if (!btn) throw new Error('Execute button not found');
   btn.disabled = true;
   btn.textContent = 'Generating Groth16 proof\u2026';
 
@@ -3372,8 +3648,11 @@ async function submitDisb() {
     const daoTotalMembers = clampDaoMemberInput('dao-total-members');
     const govConfig = selTrig === 'gov' ? getRegisteredApprovalConfig('schedule') : resolveGovernanceConfig(govThreshold, { daoTotalMembers });
     const selectedVisibilityScope = normalizeScopeLabel((vkConfigs[0] || {}).scope || (document.getElementById('vk-scope') || {}).value || 'Full audit trail');
+    const expiryConfig = getSelectedViewingKeyExpiryConfig();
     const releaseTrigger = selTrig === 'gov' ? (govConfig.governanceType === 'dao' ? 'dao' : 'governance') : (selTrig === 'time' || selTrig === 'block' ? scheduleRelease.releaseTrigger : selTrig);
     const releasedNow = releaseTrigger === 'immediate' || (releaseTrigger === 'block_height' && isBlockHeightReleaseReached({ ...scheduleRelease, executed: true }));
+    const releasedAt = releasedNow ? executedAt : null;
+    const expiryTime = releasedAt ? calculateExpiryTime(expiryConfig.expiryDays, releasedAt) : null;
     const transactionRows = executionResult.transactionRows || createStoredTransactions(recipientSnapshot, result.signature, executedAt, result.commitment, activeToken, batchConfig.tokenConfig.mint);
     const transactionSummary = executionResult.transactionSummary || summarizeTransactions(transactionRows);
     const newD = {
@@ -3415,6 +3694,11 @@ async function submitDisb() {
       commitments: executionResult.commitments || [],
       nkDisplay: finalNkDisplay,
       released: releasedNow,
+      releasedAt,
+      expiryLabel: expiryConfig.expiryLabel,
+      expiryDays: expiryConfig.expiryDays,
+      expiryTime,
+      expired: !!expiryTime && Date.now() >= expiryTime,
       pendingApproval: !releasedNow && selTrig === 'gov',
       type: 'disbursement',
       approvals: selTrig === 'gov' ? [] : undefined,
@@ -3460,6 +3744,11 @@ async function submitDisb() {
       walletNetwork: newD.walletNetwork,
       executionMode: newD.executionMode,
       demoTx: newD.demoTx,
+      releasedAt: newD.releasedAt,
+      expiryLabel: newD.expiryLabel,
+      expiryDays: newD.expiryDays,
+      expiryTime: newD.expiryTime,
+      expired: newD.expired,
       createdAt: newD.created,
       recipient: 'Scheduled release',
       scope: selectedVisibilityScope,
@@ -3481,6 +3770,7 @@ async function submitDisb() {
     if (releasedNow) registerReleasedViewingKey(newD);
     populateDisbursementDropdown();
     updateDisbursementCounters();
+    renderExecutionSurfaces();
 
     // Reset form
     resetScheduleForm(labelEl);
@@ -3499,14 +3789,20 @@ async function submitDisb() {
   } catch(err) {
     const rejected = err && /reject|declin|cancel/i.test(err.message || '');
     const insufficient = err && /insufficient (devnet )?(sol|token)/i.test(err.message || '');
-    const liveFailure = executionMode === 'live' && !rejected && !insufficient;
-    toast(rejected ? (executionMode === 'demo' ? 'Demo cancelled' : 'Transaction rejected') : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed. Switch to Demo Mode to simulate.' : 'Error')),
-      rejected ? (executionMode === 'demo' ? 'No simulated transaction was saved.' : 'Transaction rejected') : (insufficient ? 'Fund this wallet on Devnet or switch to Demo Mode.' : (liveFailure ? 'No disbursement transaction was saved.' : (err.message || 'Something went wrong'))));
+    const invalidRecipient = err && /invalid recipient wallet address/i.test(err.message || '');
+    const liveFailure = executionMode === 'live' && !rejected && !insufficient && !invalidRecipient;
+    reportExecuteFailure(
+      invalidRecipient ? err.message : (rejected ? (executionMode === 'demo' ? 'Demo cancelled' : 'Transaction rejected') : (insufficient ? err.message : (liveFailure ? 'Live Cloak Devnet execution failed' : 'Error'))),
+      invalidRecipient ? err.message : (rejected ? (executionMode === 'demo' ? 'No simulated transaction was saved.' : 'Transaction rejected') : (insufficient ? 'Fund this wallet on Devnet or switch to Demo Mode.' : (err.message || 'No disbursement transaction was saved.'))),
+      err
+    );
     console.error(err);
+    return false;
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1.5" y="5.5" width="10" height="6" rx="1.2" fill="#7fffd4" opacity=".6"/><path d="M4 5.5V4.2a2.5 2.5 0 0 1 5 0V5.5" stroke="#7fffd4" stroke-width="1.1" stroke-linecap="round"/></svg>Execute shielded disbursement';
   }
+  return true;
 }
 
 // ─── DISBURSEMENT CARDS ───────────────────────────────────────────────────────
@@ -3694,6 +3990,9 @@ async function issueVK() {
   if (govConfig && govConfig.error) { toast('Approval wallets required', govConfig.error); return; }
 
   const released = isImmediate && attachedExecuted;
+  const releasedAt = released ? Date.now() : null;
+  const expiryConfig = getViewingKeyExpiryConfig('Never expires');
+  const expiryTime = calculateExpiryTime(expiryConfig.expiryDays, releasedAt);
   const attachedTransactions = getStoredTransactionsForDisbursement(attachedDisb);
   const attachedSummary = attachedDisb.transactionSummary || summarizeTransactions(attachedTransactions);
   upsertViewingKeyRecord({
@@ -3735,7 +4034,11 @@ async function issueVK() {
     governanceType: requiresApproval ? govConfig.governanceType : undefined,
     governanceMode: requiresApproval ? govConfig.governanceMode : undefined,
     daoTotalMembers: isDao ? govConfig.daoTotalMembers : undefined,
-    releasedAt: released ? Date.now() : null
+    releasedAt,
+    expiryLabel: expiryConfig.expiryLabel,
+    expiryDays: expiryConfig.expiryDays,
+    expiryTime,
+    expired: false
   });
   saveStoredDisbursements();
 
@@ -3841,6 +4144,7 @@ async function castVote(approve) {
     if (!selected.nkDisplay && selected.pendingNkDisplay) selected.nkDisplay = selected.pendingNkDisplay;
     if (!selected.nkDisplay && selected.nk) selected.nkDisplay = selected.nk;
     selected.releasedAt = Date.now();
+    applyViewingKeyExpiry(selected, selected.releasedAt);
     if (d && isScheduledDisbursementKey) {
       d.released = true;
       d.pendingApproval = false;
@@ -3865,8 +4169,9 @@ function pasteDemo() {
   if (!el) return;
   const latestKey = getLatestViewingKey();
   const latestDisb = latestKey ? disbursements.find(d => d.id === latestKey.disbursementId) : null;
+  const latestExpired = latestKey && isViewingKeyExpired(latestKey);
   el.value = latestKey
-    ? (latestKey.released ? latestKey.nkDisplay : (latestDisb && !isDisbursementExecuted(latestDisb) ? 'nk: [awaiting scheduled execution]' : (latestKey.releaseTrigger === 'dao' ? 'nk: [pending DAO approval]' : (latestKey.releaseTrigger === 'governance' ? 'nk: [pending governance approval]' : (latestKey.releaseTrigger === 'block_height' ? 'nk: [locked until block height ' + Number(latestKey.releaseBlockHeight || latestDisb?.releaseBlockHeight || 0).toLocaleString() + ']' : (latestKey.releaseTrigger === 'custom_time' ? 'nk: [locked until custom release time]' : 'nk: [locked until release]'))))))
+    ? (latestExpired ? 'nk: [expired]' : (latestKey.released ? latestKey.nkDisplay : (latestDisb && !isDisbursementExecuted(latestDisb) ? 'nk: [awaiting scheduled execution]' : (latestKey.releaseTrigger === 'dao' ? 'nk: [pending DAO approval]' : (latestKey.releaseTrigger === 'governance' ? 'nk: [pending governance approval]' : (latestKey.releaseTrigger === 'block_height' ? 'nk: [locked until block height ' + Number(latestKey.releaseBlockHeight || latestDisb?.releaseBlockHeight || 0).toLocaleString() + ']' : (latestKey.releaseTrigger === 'custom_time' ? 'nk: [locked until custom release time]' : 'nk: [locked until release]')))))))
     : DEMO_AUDIT_KEY;
 }
 
@@ -3982,10 +4287,18 @@ async function runDecrypt() {
     toast('Key not released', key.includes('block height') ? 'Wait until Solana Devnet reaches the configured block height.' : (key.includes('DAO') ? 'Wait until DAO approval reaches 60%.' : (key.includes('governance') ? 'Wait until governance approval completes.' : (key.includes('custom') ? 'Wait until the custom release time.' : 'Wait until the release countdown reaches zero.'))));
     return;
   }
+  if (key.includes('[expired]')) {
+    toast('Viewing key expired', 'This viewing key can no longer decrypt audit history.');
+    return;
+  }
   const matchingViewingKey = getViewingKeyByKey(key);
   const matchingDisb = getDisbursementByViewingKey(key);
   if (matchingViewingKey && matchingDisb && !isDisbursementExecuted(matchingDisb)) {
     toast('Disbursement not executed yet', matchingDisb.label + ' has not reached its execution time.');
+    return;
+  }
+  if (matchingViewingKey && isViewingKeyExpired(matchingViewingKey)) {
+    toast('Viewing key expired', 'This viewing key can no longer decrypt audit history.');
     return;
   }
   if (matchingViewingKey && !matchingViewingKey.released) {
@@ -4074,6 +4387,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadStoredWallet();
   loadExecutionMode();
   renderExecutionMode();
+  bindExecuteDisbursementButton();
   renderWalletSidebar();
   refreshWalletBalance();
   registerWalletListeners();
