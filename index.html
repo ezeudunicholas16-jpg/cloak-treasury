@@ -2771,17 +2771,28 @@ function parseTokenAmountToBaseUnits(value, decimals) {
   return amount > 0n ? amount : null;
 }
 
-function logRecipientValidationValue(rawValue, trimmedAddress, row) {
-  const rowText = row ? ' row ' + row : '';
-  console.log('Recipient wallet validation raw value' + rowText + ':', String(rawValue ?? ''));
-  console.log('Recipient wallet validation trimmed value' + rowText + ':', trimmedAddress);
+function getRecipientRowValues(row) {
+  const rawAddr = String(row?.addrRaw ?? row?.addr ?? row?.recipient ?? '');
+  const addr = rawAddr.trim();
+  const amountText = String(row?.amountText ?? row?.amount ?? '').trim();
+  return { rawAddr, addr, amountText };
+}
+
+function isBlankRecipientRow(rawAddr, amountText) {
+  return !String(rawAddr ?? '').trim() && !String(amountText ?? '').trim();
+}
+
+function isRecipientInputError(message) {
+  return /recipient wallet address|missing recipient|add at least one recipient|no recipients|enter a valid amount/i.test(String(message || ''));
 }
 
 function isValidSolanaAddress(address) {
+  const trimmedAddress = String(address || '').trim();
+  if (!trimmedAddress.length) return true;
   try {
     const PublicKey = getSolanaPublicKeyConstructor();
     if (!PublicKey) throw new Error('Solana PublicKey unavailable');
-    new PublicKey(address);
+    new PublicKey(trimmedAddress);
     return true;
   } catch {
     return false;
@@ -2789,25 +2800,28 @@ function isValidSolanaAddress(address) {
 }
 
 function getValidatedRecipientSnapshot(token) {
+  const currentRecipients = syncRecipientsFromInputs();
+  const hasRecipientInput = currentRecipients.some(r => {
+    const { rawAddr, amountText } = getRecipientRowValues(r);
+    return !isBlankRecipientRow(rawAddr, amountText);
+  });
+  if (!hasRecipientInput) return { error: 'Missing recipient', detail: 'Add at least one recipient.' };
   const tokenConfig = getTokenConfig(token);
   if (!tokenConfig) return { error: getTokenMintConfigError(token) };
-  const currentRecipients = syncRecipientsFromInputs();
-  if (!currentRecipients.length) return { error: 'Add at least one recipient.' };
   const recipientSnapshot = [];
   let totalBaseUnits = 0n;
   let totalAmount = 0;
   for (const [index, r] of currentRecipients.entries()) {
-    const rawAddr = String(r.addrRaw ?? r.addr ?? '');
-    const addr = rawAddr.trim();
-    logRecipientValidationValue(rawAddr, addr, index + 1);
+    const { rawAddr, addr, amountText } = getRecipientRowValues(r);
+    if (isBlankRecipientRow(rawAddr, amountText)) continue;
+    if (!addr) return { error: 'Missing recipient', detail: 'Row ' + (index + 1) + ': Add a recipient wallet address.' };
     if (!isValidSolanaAddress(addr)) {
       const message = 'Invalid recipient wallet address in row ' + (index + 1);
-      console.error('Rejected recipient wallet address row ' + (index + 1) + ':', addr);
       return { error: message, detail: message };
     }
-    const amountBaseUnits = parseTokenAmountToBaseUnits(r.amount, tokenConfig.decimals);
+    const amountBaseUnits = parseTokenAmountToBaseUnits(amountText, tokenConfig.decimals);
     if (!amountBaseUnits) return { error: 'Enter a valid amount.', detail: 'Row ' + (index + 1) + ': Enter a valid amount.' };
-    const displayAmount = Number(r.amount);
+    const displayAmount = Number(amountText);
     if (!Number.isFinite(displayAmount) || displayAmount <= 0) return { error: 'Enter a valid amount.', detail: 'Row ' + (index + 1) + ': Enter a valid amount.' };
     totalBaseUnits += amountBaseUnits;
     totalAmount = roundMoney(totalAmount + displayAmount);
@@ -2816,13 +2830,14 @@ function getValidatedRecipientSnapshot(token) {
       addrRaw: rawAddr,
       recipient: addr,
       amount: displayAmount,
-      amountText: String(r.amount).trim(),
+      amountText,
       amountBaseUnits: amountBaseUnits.toString(),
       token: tokenConfig.symbol,
       mint: tokenConfig.mint,
       decimals: tokenConfig.decimals
     });
   }
+  if (!recipientSnapshot.length) return { error: 'Missing recipient', detail: 'Add at least one recipient.' };
   return { recipientSnapshot, totalAmount, totalBaseUnits, tokenConfig };
 }
 
@@ -2834,11 +2849,12 @@ function shortMint(mint) {
 function getDisbursementBatchConfig(d) {
   const tokenConfig = getTokenConfig(d?.token);
   if (!tokenConfig) return { error: getTokenMintConfigError(d?.token) };
-  const recipientSnapshot = (d?.recipients || []).map((row, index) => {
-    const rawAddr = String(row.addrRaw ?? row.addr ?? row.recipient ?? '');
-    const addr = rawAddr.trim();
-    const amountBaseUnits = row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString();
-    return {
+  const recipientSnapshot = [];
+  for (const row of (d?.recipients || [])) {
+    const { rawAddr, addr, amountText } = getRecipientRowValues(row);
+    if (isBlankRecipientRow(rawAddr, amountText)) continue;
+    const amountBaseUnits = row.amountBaseUnits || parseTokenAmountToBaseUnits(amountText, tokenConfig.decimals)?.toString();
+    recipientSnapshot.push({
       ...row,
       addr,
       addrRaw: rawAddr,
@@ -2847,16 +2863,16 @@ function getDisbursementBatchConfig(d) {
       mint: row.mint || tokenConfig.mint,
       decimals: row.decimals ?? tokenConfig.decimals,
       amountBaseUnits
-    };
-  });
+    });
+  }
   for (const [index, row] of recipientSnapshot.entries()) {
-    logRecipientValidationValue(row.addrRaw, row.addr, index + 1);
+    if (!row.addr) return { error: 'Missing recipient', detail: 'Row ' + (index + 1) + ': Add a recipient wallet address.' };
     if (!isValidSolanaAddress(row.addr)) {
       const message = 'Invalid recipient wallet address in row ' + (index + 1);
-      console.error('Rejected recipient wallet address row ' + (index + 1) + ':', row.addr);
       return { error: message, detail: message };
     }
   }
+  if (!recipientSnapshot.length) return { error: 'Missing recipient', detail: 'Add at least one recipient.' };
   const invalidAmountIndex = recipientSnapshot.findIndex(row => !row.amountBaseUnits || BigInt(row.amountBaseUnits) <= 0n);
   if (invalidAmountIndex >= 0) return { error: 'Enter a valid amount.', detail: 'Row ' + (invalidAmountIndex + 1) + ': Enter a valid amount.' };
   const totalBaseUnits = d?.totalBaseUnits
@@ -3186,10 +3202,11 @@ async function executeDisbursementTransaction(detail) {
   const tokenConfig = detail.tokenConfig || getTokenConfig(token);
   if (!tokenConfig) throw new Error(getTokenMintConfigError(token));
   await ensureSolanaPublicKeyReady();
-  const recipientSnapshot = (detail.recipientSnapshot || []).map((row, index) => {
-    const rawAddr = String(row.addrRaw ?? row.addr ?? row.recipient ?? '');
-    const addr = rawAddr.trim();
-    return {
+  const recipientSnapshot = [];
+  for (const row of (detail.recipientSnapshot || [])) {
+    const { rawAddr, addr, amountText } = getRecipientRowValues(row);
+    if (isBlankRecipientRow(rawAddr, amountText)) continue;
+    recipientSnapshot.push({
       ...row,
       recipient: addr,
       addr,
@@ -3197,14 +3214,13 @@ async function executeDisbursementTransaction(detail) {
       token: row.token || tokenConfig.symbol,
       mint: row.mint || tokenConfig.mint,
       decimals: row.decimals ?? tokenConfig.decimals,
-      amountBaseUnits: row.amountBaseUnits || parseTokenAmountToBaseUnits(row.amount, tokenConfig.decimals)?.toString()
-    };
-  });
+      amountBaseUnits: row.amountBaseUnits || parseTokenAmountToBaseUnits(amountText, tokenConfig.decimals)?.toString()
+    });
+  }
   if (!recipientSnapshot.length) throw new Error('Add at least one recipient.');
   for (const [index, row] of recipientSnapshot.entries()) {
-    logRecipientValidationValue(row.addrRaw, row.addr, index + 1);
+    if (!row.addr) throw new Error('Missing recipient');
     if (!isValidSolanaAddress(row.addr)) {
-      console.error('Rejected recipient wallet address row ' + (index + 1) + ':', row.addr);
       throw new Error('Invalid recipient wallet address in row ' + (index + 1));
     }
   }
@@ -3390,7 +3406,9 @@ async function executeScheduledDisbursement(d) {
     d.executionErrorAt = Date.now();
     saveStoredDisbursements();
     renderDisbCards();
-    toast(batchConfig.error, batchConfig.detail || batchConfig.error);
+    if (!isRecipientInputError(batchConfig.error) && !isRecipientInputError(batchConfig.detail)) {
+      toast(batchConfig.error, batchConfig.detail || batchConfig.error);
+    }
     return false;
   }
   if (!isDemoRun) {
@@ -3566,12 +3584,11 @@ async function submitDisb() {
   const labelEl = document.getElementById('disb-label');
   const label   = labelEl ? labelEl.value.trim() : '';
 
-  if (!label)             { reportExecuteFailure('Missing label', 'Give this disbursement a name.'); return false; }
   syncRecipientsFromInputs();
-  if (!recipients.length) { reportExecuteFailure('No recipients', 'Add at least one recipient.'); return false; }
   await ensureSolanaPublicKeyReady();
   const batchConfig = getValidatedRecipientSnapshot(activeToken);
   if (batchConfig.error)  { reportExecuteFailure(batchConfig.error, batchConfig.detail || batchConfig.error); return false; }
+  if (!label)             { reportExecuteFailure('Missing label', 'Give this disbursement a name.'); return false; }
   const total = batchConfig.totalAmount;
   if (activeWalletType === 'metamask') { reportExecuteFailure('Cloak transactions require a Solana wallet', 'Switch to Phantom, Solflare, Backpack, or Glow.'); return false; }
   const executionConfig = getExecutionScheduleConfig();
